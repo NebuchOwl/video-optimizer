@@ -7,7 +7,28 @@
   ],
   "permissions": [
     "core:default",
-    "shell:execute",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "ffmpeg",
+          "cmd": "ffmpeg",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "ffmpeg",
+          "cmd": "ffmpeg",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
     "dialog:default"
   ]
 }

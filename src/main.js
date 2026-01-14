@@ -30,31 +30,41 @@ dropzone.addEventListener('dragleave', (e) => {
   dropzone.classList.remove('border-purple-500', 'bg-gray-800/50');
 });
 
+const manualUploadBtn = document.getElementById('manual-upload-btn');
+
 dropzone.addEventListener('drop', (e) => {
   e.preventDefault();
   dropzone.classList.remove('border-purple-500', 'bg-gray-800/50');
-  // Note: For Drag & Drop in Tauri v2, webview might behave differently regarding file paths.
-  // If 'path' property is missing, we might need a different approach (e.g. tauri-plugin-fs).
-  // Start with standard API check.
+
   if (e.dataTransfer.files.length) {
-    // In Tauri, File object usually has a path property (non-standard but injected)
     const file = e.dataTransfer.files[0];
-    // Safe check for path, widely supported in Tauri webview
+    // Try to get path
     const path = file.path || file.name;
-    // If path is just filename, drag and drop might not work for full path without plugin hooks.
-    // But let's assume it works or user uses the button.
     if (file.path) {
       handleFileSelect(file.name, file.size, file.path);
     } else {
-      // Fallback or warning
-      console.warn("Could not retrieve full path from drag and drop. Please use the button.");
-      // Try to handle regular file select if internal logic allows, valid for basic testing? No ffmpeg needs path.
-      alert("Please use the 'Click to upload' button for now to ensure file access permissions.");
+      // Specific error for Tauri environment constraints
+      alert("Drag & Drop received a file but could not access its full path (security restriction). \n\nPlease use the 'Select Video File' button instead.");
     }
   }
 });
 
-dropzone.addEventListener('click', async () => {
+// Bind click to the button explicitly, prevent bubbling if needed or just let it work
+manualUploadBtn.addEventListener('click', async (e) => {
+  e.stopPropagation(); // prevent dropzone click if we keep that?
+  // Actually we remove the dropzone click listener to avoid double triggers/confusion
+  triggerFileSelect();
+});
+
+// Also keep dropzone click as fallback? No, let's rely on the button to be explicit as requested.
+// But user expects big area to be clickable? 
+// Let's make the Whole area NOT clickable for file dialog, ONLY the button, to differentiate.
+// Or we keep both.
+// User said "There is no button". 
+// Step 1: Add button. (Done in HTML)
+// Step 2: Bind button.
+
+async function triggerFileSelect() {
   try {
     const file = await open({
       multiple: false,
@@ -65,20 +75,13 @@ dropzone.addEventListener('click', async () => {
     });
 
     if (file) {
-      // file is a path string or object depending on version? 
-      // In v2 plugin-dialog, it returns null or string (if multiple: false) or string[] (if multiple: true).
-      // Actually it returns FileResponse? No, usually string path.
-      // Let's assume it returns string path.
-      // We need size? We can't get size easily from just path without filesystem plugin.
-      // For UI purposes, we can skip size or get it via another command. 
-      // We'll just show name.
       const name = file.replace(/^.*[\\\/]/, '');
-      handleFileSelect(name, 0, file); // Size 0 as placeholder
+      handleFileSelect(name, 0, file);
     }
   } catch (err) {
     console.error("Failed to open dialog:", err);
   }
-});
+}
 
 changeFileBtn.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -156,15 +159,48 @@ optimizeBtn.addEventListener('click', async () => {
   if (currentQuality === 'medium') crf = '18'; // High Quality
   if (currentQuality === 'high') crf = '28'; // Maximum compression
 
+  const encoderMode = document.getElementById('encoder-select').value;
+  const ffmpegArgs = ['-i', selectedFilePath];
+
+  // Encoder specifics
+  switch (encoderMode) {
+    case 'gpu-nvidia':
+      ffmpegArgs.push('-c:v', 'h264_nvenc');
+      // NVENC uses -cq for quality (similar to CRF)
+      ffmpegArgs.push('-cq', crf);
+      ffmpegArgs.push('-preset', 'p4'); // Medium preset
+      break;
+    case 'gpu-amd':
+      ffmpegArgs.push('-c:v', 'h264_amf');
+      // AMF mapping (often uses -qp or -quality)
+      ffmpegArgs.push('-qp-i', crf, '-qp-p', crf);
+      break;
+    case 'gpu-intel':
+      ffmpegArgs.push('-c:v', 'h264_qsv');
+      // QSV often uses -global_quality? or -q:v?
+      // Safe bet: -global_quality
+      ffmpegArgs.push('-global_quality', crf);
+      // Note: QSV setup is tricky without load_plugin, fallbacks might happen
+      break;
+    case 'cpu-low':
+      ffmpegArgs.push('-vcodec', 'libx264');
+      ffmpegArgs.push('-crf', crf);
+      ffmpegArgs.push('-preset', 'fast');
+      ffmpegArgs.push('-threads', '2'); // Limit CPU usage
+      break;
+    default: // cpu-fast
+      ffmpegArgs.push('-vcodec', 'libx264');
+      ffmpegArgs.push('-crf', crf);
+      ffmpegArgs.push('-preset', 'fast');
+      // No thread limit = Max CPU
+      break;
+  }
+
+  // Common args
+  ffmpegArgs.push('-y', outputPath);
+
   try {
-    const command = Command.sidecar('ffmpeg', [
-      '-i', selectedFilePath,
-      '-vcodec', 'libx264',
-      '-crf', crf,
-      '-preset', 'fast', // Speed up encoding
-      '-y', // Overwrite output
-      outputPath
-    ]);
+    const command = Command.sidecar('ffmpeg', ffmpegArgs);
 
     console.log("Running ffmpeg command...");
     // Spawn and listen (basic implementation, just awaiting spawn then close)
