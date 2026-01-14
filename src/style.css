@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+    .option-btn {
+        @apply p-4 rounded-xl bg-gray-800 border border-gray-700 text-left transition-all hover:bg-gray-700 focus:outline-none;
+    }
+}
