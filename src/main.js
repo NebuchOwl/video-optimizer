@@ -1,6 +1,6 @@
 import './style.css';
 import { Command } from '@tauri-apps/plugin-shell';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 
 const SUPPORTED_EXTENSIONS = [
@@ -282,19 +282,32 @@ if (defaultBtn) {
   defaultBtn.classList.remove('bg-gray-800');
 }
 
+
+
+
+
 optimizeBtn.addEventListener('click', async () => {
   if (!selectedFilePath) return;
+
+  // 1. Get Save Path
+  let defaultExt = '.mp4';
+  if (isAdvancedMode && advCodec.value === 'prores_ks') defaultExt = '.mov';
+  else if (isAdvancedMode && advCodec.value === 'gif') defaultExt = '.gif';
+
+  const defaultPath = selectedFilePath.replace(/(\.[^.]+)$/, '_optimized' + defaultExt);
+
+  const outputPath = await save({
+    defaultPath: defaultPath,
+    filters: [{ name: 'Video', extensions: [defaultExt.substring(1)] }]
+  });
+
+  if (!outputPath) return; // User Cancelled
 
   progressOverlay.classList.remove('hidden');
   progressOverlay.classList.add('flex');
   optimizeBtn.disabled = true;
-
-  const lastDotIndex = selectedFilePath.lastIndexOf('.');
-  let outputPath = selectedFilePath.substring(0, lastDotIndex) + '_optimized' + selectedFilePath.substring(lastDotIndex);
-
-  if (isAdvancedMode && advCodec.value === 'prores_ks') {
-    outputPath = outputPath.substring(0, outputPath.lastIndexOf('.')) + '.mov';
-  }
+  document.getElementById('progress-text').textContent = "0%";
+  document.getElementById('progress-bar').style.width = "0%";
 
   const ffmpegArgs = ['-i', selectedFilePath];
 
@@ -304,7 +317,6 @@ optimizeBtn.addEventListener('click', async () => {
 
     if (codec !== 'copy') {
       ffmpegArgs.push('-c:v', codec);
-      // CRF/Preset only if not copy
       ffmpegArgs.push('-crf', advCrf.value);
       ffmpegArgs.push('-preset', advPreset.value);
     } else {
@@ -345,7 +357,7 @@ optimizeBtn.addEventListener('click', async () => {
     }
 
   } else {
-    // SIMPLE LOGIC (Existing)
+    // SIMPLE LOGIC
     let crf = '23';
     if (currentQuality === 'medium') crf = '18';
     if (currentQuality === 'high') crf = '28';
@@ -377,20 +389,54 @@ optimizeBtn.addEventListener('click', async () => {
     const command = Command.sidecar('ffmpeg', ffmpegArgs);
     console.log("FFmpeg Command:", ffmpegArgs.join(' '));
 
-    const output = await command.execute();
+    // Get output for progress
+    command.on('close', data => {
+      progressOverlay.classList.add('hidden');
+      progressOverlay.classList.remove('flex');
+      optimizeBtn.disabled = false;
+      currentChildProcess = null;
+      if (data.code === 0) {
+        showToast(`Optimization Complete!\nSaved to: ${outputPath}`, 'success');
+        resetUI();
+      } else {
+        showToast('Optimization Failed', 'error');
+      }
+    });
 
-    if (output.code === 0) {
-      alert(`Optimization Complete!\nSaved to: ${outputPath}`);
-      resetUI();
-    } else {
-      console.error("FFmpeg Error:", output.stderr);
-      alert(`Optimization Failed.\n${output.stderr.slice(-500)}`);
+    command.on('error', error => {
+      console.error("Spawn Error:", error);
+      progressOverlay.classList.add('hidden');
+      progressOverlay.classList.remove('flex');
+      optimizeBtn.disabled = false;
+      showToast(`Process Error: ${error}`, 'error');
+    });
+
+    // Progress Parsing
+    const videoElement = document.getElementById('video-player');
+    let duration = 1;
+    if (videoElement && videoElement.duration && !isNaN(videoElement.duration)) {
+      duration = videoElement.duration;
     }
+
+    command.stderr.on('data', line => {
+      // Parse "time=HH:MM:SS.mm"
+      const tMatch = line.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d+)/);
+      if (tMatch) {
+        const h = parseFloat(tMatch[1]);
+        const m = parseFloat(tMatch[2]);
+        const s = parseFloat(tMatch[3]);
+        const currentSeconds = h * 3600 + m * 60 + s;
+        const pct = Math.min(100, Math.round((currentSeconds / duration) * 100));
+        document.getElementById('progress-text').textContent = pct + "%";
+        document.getElementById('progress-bar').style.width = pct + "%";
+      }
+    });
+
+    currentChildProcess = await command.spawn();
 
   } catch (e) {
     console.error(e);
     alert('Execution Error: ' + e);
-  } finally {
     progressOverlay.classList.add('hidden');
     progressOverlay.classList.remove('flex');
     optimizeBtn.disabled = false;

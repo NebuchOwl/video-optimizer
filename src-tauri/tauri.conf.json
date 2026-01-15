@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ql-project",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "com.sinakop.videooptimizer",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' asset: https://asset.localhost blob: data:; media-src 'self' asset: https://asset.localhost blob: data:; connect-src 'self' ipc: https://ipc.localhost asset: https://asset.localhost;"
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' asset: https://asset.localhost blob: data:; media-src 'self' asset: https://asset.localhost blob: data: http://localhost:18493; connect-src 'self' ipc: https://ipc.localhost asset: https://asset.localhost http://localhost:18493;"
     }
   },
   "bundle": {
