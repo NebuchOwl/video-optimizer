@@ -40,6 +40,14 @@
     "dialog:default",
     "fs:default",
     {
+      "identifier": "fs:allow-write",
+      "allow": [
+        {
+          "path": "**"
+        }
+      ]
+    },
+    {
       "identifier": "fs:allow-read",
       "allow": [
         {

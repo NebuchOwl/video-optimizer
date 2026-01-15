@@ -19,8 +19,8 @@ body.theme-light {
     --bg-tertiary: #e5e7eb;
     --bg-input: #ffffff;
     --text-primary: #111827;
-    --text-secondary: #4b5563;
-    --border-color: #e5e7eb;
+    --text-secondary: #374151;
+    --border-color: #d1d5db;
 }
 
 body.theme-midnight {
@@ -73,6 +73,12 @@ body.theme-sunset {
 
 .border-theme {
     border-color: var(--border-color);
+}
+
+/* Theme-aware Hover Class */
+.hover-theme:hover {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
 }
 
 @layer components {

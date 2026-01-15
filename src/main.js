@@ -1,6 +1,8 @@
 import './style.css';
 import { Command } from '@tauri-apps/plugin-shell';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { tempDir, join } from '@tauri-apps/api/path';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 
 const SUPPORTED_EXTENSIONS = [
@@ -307,6 +309,62 @@ if (defaultBtn) {
 
 
 
+
+/* --- Batch UI Helpers --- */
+function initBatchUI(files) {
+  const list = document.getElementById('progress-list');
+  const statusEl = document.getElementById('batch-status-text');
+  if (list) {
+    list.innerHTML = '';
+    files.forEach((f, i) => {
+      const name = typeof f === 'object' ? f.input.split(/[\\/]/).pop() : f.split(/[\\/]/).pop();
+      const row = document.createElement('div');
+      row.id = `batch-item-${i}`;
+      row.className = 'flex items-center justify-between bg-gray-800 p-3 rounded-lg border border-gray-700';
+      row.innerHTML = `
+            <div class="flex items-center space-x-3 w-1/2 overflow-hidden">
+                <span class="text-gray-500 font-mono text-xs w-6 flex-none">${i + 1}.</span>
+                <span class="truncate text-sm text-gray-200" title="${name}">${name}</span>
+            </div>
+            <div class="flex items-center space-x-3 flex-1 justify-end">
+                <span id="batch-status-${i}" class="text-xs text-gray-500 font-mono hidden md:block">Pending</span>
+                <div class="w-16 md:w-24 h-2 bg-gray-700 rounded-full overflow-hidden flex-none">
+                    <div id="batch-bar-${i}" class="h-full bg-purple-500 w-0 transition-all duration-300"></div>
+                </div>
+                <span id="batch-percent-${i}" class="text-xs font-mono text-gray-400 w-10 text-right">0%</span>
+            </div>
+        `;
+      list.appendChild(row);
+    });
+  }
+  if (statusEl) statusEl.textContent = "Initializing...";
+}
+
+function updateBatchUI(i, percent, status) {
+  const bar = document.getElementById(`batch-bar-${i}`);
+  const txt = document.getElementById(`batch-percent-${i}`);
+  const stat = document.getElementById(`batch-status-${i}`);
+  const row = document.getElementById(`batch-item-${i}`);
+
+  if (bar) bar.style.width = `${percent}%`;
+  if (txt) txt.textContent = `${Math.round(percent)}%`;
+
+  if (status && stat) {
+    stat.textContent = status;
+    if (status === 'Done') {
+      stat.className = 'text-xs text-green-400 font-bold font-mono hidden md:block';
+      if (bar) bar.className = 'h-full bg-green-500 w-full transition-all duration-300';
+      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (status === 'Error') {
+      stat.className = 'text-xs text-red-400 font-bold font-mono hidden md:block';
+      if (bar) bar.className = 'h-full bg-red-500 w-full transition-all duration-300';
+    } else if (status === 'Processing') {
+      stat.className = 'text-xs text-purple-400 animate-pulse font-mono hidden md:block';
+      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+}
+
 optimizeBtn.addEventListener('click', async () => {
   if (!selectedFiles || selectedFiles.length === 0) return;
 
@@ -351,16 +409,30 @@ optimizeBtn.addEventListener('click', async () => {
   progressOverlay.classList.remove('hidden');
   progressOverlay.classList.add('flex');
   optimizeBtn.disabled = true;
+  initBatchUI(fileQueue.map(q => q.input));
 
   let successCount = 0;
   let errorCount = 0;
+  let isCancelled = false;
+
+  cancelBtn.onclick = () => {
+    isCancelled = true;
+    if (currentChildProcess) currentChildProcess.kill();
+    document.getElementById('batch-status-text').textContent = "Cancelled";
+    progressOverlay.classList.add('hidden');
+    progressOverlay.classList.remove('flex');
+    optimizeBtn.disabled = false;
+    showToast('Processing cancelled', 'info');
+  };
 
   for (let i = 0; i < fileQueue.length; i++) {
+    if (isCancelled) break;
     const { input, output } = fileQueue[i];
     const pctPrefix = isBatch ? `File ${i + 1}/${fileQueue.length}: ` : '';
 
-    document.getElementById('progress-text').textContent = `${pctPrefix}Starting...`;
-    document.getElementById('progress-bar').style.width = "0%";
+    updateBatchUI(i, 0, 'Processing');
+    const statusText = document.getElementById('batch-status-text');
+    if (statusText) statusText.textContent = `Processing ${i + 1}/${fileQueue.length}...`;
 
     const ffmpegArgs = ['-i', input];
 
@@ -437,8 +509,7 @@ optimizeBtn.addEventListener('click', async () => {
           if (tMatch) {
             const cur = parseFloat(tMatch[1]) * 3600 + parseFloat(tMatch[2]) * 60 + parseFloat(tMatch[3]);
             const pct = Math.min(100, Math.round((cur / durationSec) * 100));
-            document.getElementById('progress-text').textContent = `${pctPrefix}${pct}%`;
-            document.getElementById('progress-bar').style.width = `${pct}%`;
+            updateBatchUI(i, pct);
           }
         }
       });
@@ -447,13 +518,14 @@ optimizeBtn.addEventListener('click', async () => {
 
       await new Promise((resolve) => {
         command.on('close', data => {
-          if (data.code === 0) successCount++;
-          else errorCount++;
+          if (data.code === 0) { successCount++; updateBatchUI(i, 100, 'Done'); }
+          else { errorCount++; updateBatchUI(i, 0, 'Error'); }
           resolve();
         });
         command.on('error', err => {
           console.error(err);
           errorCount++;
+          updateBatchUI(i, 0, 'Error');
           resolve();
         });
       });
@@ -462,24 +534,37 @@ optimizeBtn.addEventListener('click', async () => {
     } catch (e) {
       console.error(e);
       showToast(`Error starting file ${i + 1}: ${e}`, 'error');
+      updateBatchUI(i, 0, 'Error');
       errorCount++;
     }
   }
 
   // Done
-  progressOverlay.classList.add('hidden');
-  progressOverlay.classList.remove('flex');
-  optimizeBtn.disabled = false;
+  if (!isCancelled) {
+    const statusText = document.getElementById('batch-status-text');
+    if (statusText) statusText.textContent = "Completed";
 
-  if (successCount > 0) {
-    if (errorCount === 0) {
-      showToast(`Done! All ${successCount} files processed.`, 'success');
-      resetUI();
-    } else {
-      showToast(`Completed: ${successCount} Success, ${errorCount} Failed.`, 'info');
-    }
-  } else if (errorCount > 0) {
-    showToast('Batch processing failed.', 'error');
+    setTimeout(() => {
+      const btn = document.getElementById('cancel-btn');
+      if (btn) {
+        btn.textContent = "Close";
+        btn.onclick = () => {
+          progressOverlay.classList.add('hidden');
+          progressOverlay.classList.remove('flex');
+          optimizeBtn.disabled = false;
+          btn.textContent = "Cancel Processing";
+        };
+      }
+
+      if (successCount > 0 && errorCount === 0) {
+        showToast(`Done! All ${successCount} files processed.`, 'success');
+        resetUI();
+      } else {
+        showToast(`Finished: ${successCount} Success, ${errorCount} Failed.`, 'info');
+      }
+    }, 500);
+  } else {
+    optimizeBtn.disabled = false;
   }
 });
 
@@ -662,7 +747,40 @@ trimVideoPreview.onloadedmetadata = () => {
   dispTotalEnd.textContent = formatTime(trimState.duration);
 
   updateTimelineUI();
+
+  // Generate Filmstrip
+  if (trimFilePath) generateFilmstrip(trimFilePath, trimState.duration);
 };
+
+async function generateFilmstrip(filePath, duration) {
+  if (!filePath || !duration) return;
+  try {
+    const tempPath = await join(await tempDir(), `filmstrip_${Date.now()}.jpg`);
+    // 10 frames spread over duration. fps = 10/duration.
+    const fps = 10 / duration;
+
+    // Command: ffmpeg -i input -vf "fps=...,scale=120:-1,tile=10x1" -frames:v 1 out.jpg
+    const args = [
+      '-ss', '0', '-i', filePath,
+      '-vf', `fps=${fps},scale=128:-1,tile=10x1`,
+      '-frames:v', '1',
+      '-y', tempPath
+    ];
+
+    const cmd = Command.sidecar('ffmpeg', args);
+    const res = await cmd.execute();
+
+    if (res.code === 0) {
+      const url = convertFileSrc(tempPath);
+      if (timelineTrack) {
+        timelineTrack.style.backgroundImage = `url('${url}')`;
+        timelineTrack.style.backgroundSize = '100% 100%';
+        timelineTrack.style.backgroundRepeat = 'no-repeat';
+        timelineTrack.style.backgroundColor = '#111827'; // ensure dark bg behind
+      }
+    }
+  } catch (e) { console.error("Filmstrip error", e); }
+}
 
 async function loadTrimVideo() {
   try {
@@ -728,54 +846,57 @@ trimActionBtn.addEventListener('click', async () => {
   const lastDot = trimFilePath.lastIndexOf('.');
   const ext = trimFilePath.substring(lastDot);
   const defaultPath = trimFilePath.substring(0, lastDot) + '_trimmed' + ext;
-
-  const output = await save({
-    defaultPath: defaultPath,
-    filters: [{ name: 'Video', extensions: [ext.substring(1)] }]
-  });
-
+  const output = await save({ defaultPath, filters: [{ name: 'Video', extensions: [ext.substring(1)] }] });
   if (!output) return;
 
-  // Precision Calculation
-  const start = trimState.start;
-  const duration = trimState.end - trimState.start;
-
-  const startStr = formatTime(start, true);
-  const durationStr = formatTime(duration, true);
+  const startStr = formatTime(trimState.start, true);
+  const durationStr = formatTime(trimState.end - trimState.start, true);
 
   progressOverlay.classList.remove('hidden');
   progressOverlay.classList.add('flex');
   trimActionBtn.disabled = true;
+  initBatchUI([trimFilePath]); // Single item
+  updateBatchUI(0, 0, 'Processing');
+  const statusText = document.getElementById('batch-status-text');
+  if (statusText) statusText.textContent = "Trimming Video...";
 
   try {
-    // Robust Command:
     // ffmpeg -ss START -i INPUT -t DURATION -c copy -map 0 -avoid_negative_ts make_zero OUTPUT
     const command = Command.sidecar('ffmpeg', [
-      '-ss', startStr,
-      '-i', trimFilePath,
-      '-t', durationStr,
-      '-c', 'copy',
-      '-map', '0',
-      '-avoid_negative_ts', 'make_zero',
-      '-y',
-      output
+      '-ss', startStr, '-i', trimFilePath, '-t', durationStr,
+      '-c', 'copy', '-map', '0', '-avoid_negative_ts', 'make_zero', '-y', output
     ]);
 
+    // Trimming is fast (copy), usually no need for progress bar updates from stderr unless long.
+    // We'll just wait.
     const res = await command.execute();
 
     if (res.code === 0) {
-      showToast(`Trim Successful!\nSaved to: ${output}`, 'success');
+      updateBatchUI(0, 100, 'Done');
+      if (statusText) statusText.textContent = "Completed";
+      showToast(`Trim Saved: ${output}`, 'success');
+      setTimeout(() => {
+        progressOverlay.classList.add('hidden');
+        progressOverlay.classList.remove('flex');
+        trimActionBtn.disabled = false;
+      }, 1500);
     } else {
+      updateBatchUI(0, 0, 'Error');
       showToast('Trim Failed', 'error');
       console.error(res.stderr);
+      setTimeout(() => {
+        progressOverlay.classList.add('hidden');
+        progressOverlay.classList.remove('flex');
+        trimActionBtn.disabled = false;
+      }, 2000);
     }
   } catch (e) {
+    updateBatchUI(0, 0, 'Error');
     showToast('Execution Error', 'error');
     console.error(e);
-  } finally {
+    trimActionBtn.disabled = false;
     progressOverlay.classList.add('hidden');
     progressOverlay.classList.remove('flex');
-    trimActionBtn.disabled = false;
   }
 });
 
@@ -874,22 +995,12 @@ convertActionBtn.addEventListener('click', async () => {
     const converterFilePath = converterFiles[0];
     const lastDot = converterFilePath.lastIndexOf('.');
     const defaultPath = converterFilePath.substring(0, lastDot) + '_converted.' + targetExt;
-
-    const output = await save({
-      defaultPath: defaultPath,
-      filters: [{ name: 'Media', extensions: [targetExt] }]
-    });
-
+    const output = await save({ defaultPath, filters: [{ name: 'Media', extensions: [targetExt] }] });
     if (!output) return;
     fileQueue.push({ input: converterFilePath, output: output });
   } else {
-    const dir = await open({
-      directory: true,
-      multiple: false,
-      title: "Select Output Folder for Converted Files"
-    });
+    const dir = await open({ directory: true, multiple: false, title: "Select Output Folder for Converted Files" });
     if (!dir) return;
-
     converterFiles.forEach(f => {
       const name = f.replace(/^.*[\\\/]/, '');
       const lastDot = name.lastIndexOf('.');
@@ -902,16 +1013,28 @@ convertActionBtn.addEventListener('click', async () => {
   progressOverlay.classList.remove('hidden');
   progressOverlay.classList.add('flex');
   convertActionBtn.disabled = true;
+  initBatchUI(fileQueue.map(q => q.input));
 
   let successCount = 0;
   let errorCount = 0;
+  let isCancelled = false;
+  const cancelBtn = document.getElementById('cancel-btn');
+
+  cancelBtn.onclick = () => {
+    isCancelled = true;
+    if (currentChildProcess) currentChildProcess.kill();
+    document.getElementById('batch-status-text').textContent = "Cancelled";
+    progressOverlay.classList.add('hidden');
+    progressOverlay.classList.remove('flex');
+    convertActionBtn.disabled = false;
+  };
 
   for (let i = 0; i < fileQueue.length; i++) {
+    if (isCancelled) break;
     const { input, output } = fileQueue[i];
-    const pctPrefix = isBatch ? `File ${i + 1}/${fileQueue.length}: ` : '';
-
-    document.getElementById('progress-text').textContent = `${pctPrefix}Starting...`;
-    document.getElementById('progress-bar').style.width = "0%";
+    updateBatchUI(i, 0, 'Processing');
+    const statusText = document.getElementById('batch-status-text');
+    if (statusText) statusText.textContent = `Converting ${i + 1}/${fileQueue.length}...`;
 
     const args = ['-i', input, '-y', output];
 
@@ -922,16 +1045,14 @@ convertActionBtn.addEventListener('click', async () => {
       let durationSec = 0;
       command.stderr.on('data', line => {
         const durMatch = line.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d+)/);
-        if (durMatch) {
-          durationSec = parseFloat(durMatch[1]) * 3600 + parseFloat(durMatch[2]) * 60 + parseFloat(durMatch[3]);
-        }
+        if (durMatch) durationSec = parseFloat(durMatch[1]) * 3600 + parseFloat(durMatch[2]) * 60 + parseFloat(durMatch[3]);
+
         if (durationSec > 0) {
           const tMatch = line.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d+)/);
           if (tMatch) {
             const cur = parseFloat(tMatch[1]) * 3600 + parseFloat(tMatch[2]) * 60 + parseFloat(tMatch[3]);
             const pct = Math.min(100, Math.round((cur / durationSec) * 100));
-            document.getElementById('progress-text').textContent = `${pctPrefix}${pct}%`;
-            document.getElementById('progress-bar').style.width = `${pct}%`;
+            updateBatchUI(i, pct);
           }
         }
       });
@@ -940,34 +1061,43 @@ convertActionBtn.addEventListener('click', async () => {
 
       await new Promise((resolve) => {
         command.on('close', d => {
-          if (d.code === 0) successCount++;
-          else errorCount++;
+          if (d.code === 0) { successCount++; updateBatchUI(i, 100, 'Done'); }
+          else { errorCount++; updateBatchUI(i, 0, 'Error'); }
           resolve();
         });
-        command.on('error', () => { errorCount++; resolve(); });
+        command.on('error', () => { errorCount++; updateBatchUI(i, 0, 'Error'); resolve(); });
       });
       currentChildProcess = null;
 
     } catch (e) {
       console.error(e);
       showToast(`Error on file ${i + 1}`, 'error');
+      updateBatchUI(i, 0, 'Error');
       errorCount++;
     }
   }
 
   // Done
-  progressOverlay.classList.add('hidden');
-  progressOverlay.classList.remove('flex');
-  convertActionBtn.disabled = false;
+  if (!isCancelled) {
+    const statusText = document.getElementById('batch-status-text');
+    if (statusText) statusText.textContent = "Completed";
 
-  if (successCount > 0) {
-    if (errorCount === 0) {
+    const btn = document.getElementById('cancel-btn');
+    btn.textContent = "Close";
+    btn.onclick = () => {
+      progressOverlay.classList.add('hidden');
+      progressOverlay.classList.remove('flex');
+      convertActionBtn.disabled = false;
+      btn.textContent = "Cancel Processing";
+    };
+
+    if (successCount > 0 && errorCount === 0) {
       showToast(`All ${successCount} files converted!`, 'success');
     } else {
       showToast(`Done: ${successCount} Success, ${errorCount} Failed`, 'info');
     }
-  } else if (errorCount > 0) {
-    showToast('Conversion Batch Failed', 'error');
+  } else {
+    convertActionBtn.disabled = false;
   }
 });
 
@@ -1083,6 +1213,249 @@ if (themeBtns) {
       // showToast('Theme Updated', 'success');
     });
   });
+}
+
+/* --- Video Merger Logic --- */
+const mergerView = document.getElementById('view-merger');
+const mergerAddBtn = document.getElementById('merger-add-btn');
+const mergerActionBtn = document.getElementById('merger-action-btn');
+const mergerListEl = document.getElementById('merger-list');
+let mergerFiles = [];
+
+if (mergerAddBtn) {
+  mergerAddBtn.addEventListener('click', async () => {
+    const selection = await open({
+      multiple: true,
+      filters: [{ name: 'Video', extensions: SUPPORTED_EXTENSIONS }]
+    });
+    if (selection) {
+      const newFiles = Array.isArray(selection) ? selection : [selection];
+      mergerFiles = [...mergerFiles, ...newFiles];
+      renderMergerList();
+    }
+  });
+}
+
+function renderMergerList() {
+  mergerListEl.innerHTML = '';
+  if (mergerFiles.length === 0) {
+    mergerListEl.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-gray-500 space-y-2">
+            <svg class="w-12 h-12 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            <p>Drag and drop files here to start</p>
+        </div>`;
+    mergerActionBtn.disabled = true;
+    mergerActionBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    return;
+  }
+
+  mergerActionBtn.disabled = false;
+  mergerActionBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+
+  mergerFiles.forEach((file, index) => {
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between bg-gray-700 p-3 rounded-lg shadow-sm border border-gray-600';
+    const name = file.split(/[\\/]/).pop();
+
+    row.innerHTML = `
+         <div class="flex items-center space-x-3 overflow-hidden">
+            <span class="text-gray-400 font-mono text-xs w-6">${index + 1}.</span>
+            <span class="text-white text-sm truncate w-64">${name}</span>
+         </div>
+         <div class="flex space-x-2">
+            <button class="p-1 hover:text-purple-400" onclick="window.moveMergerItem(${index}, -1)">↑</button>
+            <button class="p-1 hover:text-purple-400" onclick="window.window.moveMergerItem(${index}, 1)">↓</button>
+            <button class="p-1 hover:text-red-400" onclick="window.removeMergerItem(${index})">×</button>
+         </div>
+       `;
+    mergerListEl.appendChild(row);
+  });
+}
+
+window.moveMergerItem = (index, dir) => {
+  if (dir === -1 && index > 0) {
+    [mergerFiles[index], mergerFiles[index - 1]] = [mergerFiles[index - 1], mergerFiles[index]];
+  } else if (dir === 1 && index < mergerFiles.length - 1) {
+    [mergerFiles[index], mergerFiles[index + 1]] = [mergerFiles[index + 1], mergerFiles[index]];
+  }
+  renderMergerList();
+};
+window.removeMergerItem = (index) => {
+  mergerFiles.splice(index, 1);
+  renderMergerList();
+};
+
+if (mergerActionBtn) {
+  mergerActionBtn.addEventListener('click', async () => {
+    if (mergerFiles.length < 2) {
+      showToast('Select at least 2 files', 'error');
+      return;
+    }
+
+    const output = await save({ filters: [{ name: 'Video', extensions: ['mp4'] }] });
+    if (!output) return;
+
+    progressOverlay.classList.remove('hidden');
+    progressOverlay.classList.add('flex');
+    initBatchUI([]); // Clear list
+    const statusText = document.getElementById('batch-status-text');
+    if (statusText) statusText.textContent = "Merging...";
+
+    try {
+      // Generate Concat List
+      // Windows requires full paths, escaped? FFmpeg concat demuxer handles standard paths usually.
+      // Format: file 'path'
+
+      const listContent = mergerFiles.map(f => `file '${f.replace(/\\/g, '/')}'`).join('\n');
+      const tempD = await tempDir();
+      const listPath = await join(tempD, 'concat_list.txt');
+
+      await writeTextFile(listPath, listContent);
+
+      const args = ['-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', '-y', output];
+
+      const command = Command.sidecar('ffmpeg', args);
+      const res = await command.execute();
+
+      if (res.code === 0) {
+        showToast(`Merged successfully!\n${output}`, 'success');
+        mergerFiles = [];
+        renderMergerList();
+      } else {
+        showToast('Merge Failed. Codecs must match.', 'error');
+        console.error(res.stderr);
+      }
+
+    } catch (e) {
+      console.error(e);
+      showToast('Merge Error', 'error');
+    } finally {
+      progressOverlay.classList.add('hidden');
+      progressOverlay.classList.remove('flex');
+    }
+  });
+}
+
+/* --- Audio Tools Logic --- */
+const audioDropzone = document.getElementById('audio-dropzone');
+const btnExtract = document.getElementById('btn-extract-mp3');
+const btnMute = document.getElementById('btn-mute-audio');
+const btnNormalize = document.getElementById('btn-normalize-audio');
+let audioFile = null;
+
+if (audioDropzone) {
+  audioDropzone.addEventListener('click', async () => {
+    const file = await open({ filters: [{ name: 'Video', extensions: SUPPORTED_EXTENSIONS }] });
+    if (file) {
+      audioFile = file;
+      updateAudioUI();
+    }
+  });
+}
+
+function updateAudioUI() {
+  if (audioFile) {
+    document.getElementById('audio-file-content').classList.add('hidden');
+    document.getElementById('audio-file-info').classList.remove('hidden');
+    document.getElementById('audio-file-info').classList.add('flex');
+    document.getElementById('audio-filename').textContent = audioFile.split(/[\\/]/).pop();
+    document.getElementById('audio-actions').classList.remove('opacity-50', 'pointer-events-none');
+  }
+}
+
+// Extract
+if (btnExtract) {
+  btnExtract.addEventListener('click', async () => {
+    if (!audioFile) return;
+    const output = await save({ defaultPath: audioFile.replace(/\.[^.]+$/, '.mp3'), filters: [{ name: 'Audio', extensions: ['mp3'] }] });
+    if (!output) return;
+
+    runAudioCommand(['-i', audioFile, '-vn', '-acodec', 'libmp3lame', '-q:a', '2', '-y', output]);
+  });
+}
+// Mute
+if (btnMute) {
+  btnMute.addEventListener('click', async () => {
+    if (!audioFile) return;
+    const output = await save({ defaultPath: audioFile.replace(/\.[^.]+$/, '_muted.mp4'), filters: [{ name: 'Video', extensions: ['mp4'] }] });
+    if (!output) return;
+
+    runAudioCommand(['-i', audioFile, '-c:v', 'copy', '-an', '-y', output]);
+  });
+}
+// Normalize
+if (btnNormalize) {
+  btnNormalize.addEventListener('click', async () => {
+    if (!audioFile) return;
+    const output = await save({ defaultPath: audioFile.replace(/\.[^.]+$/, '_norm.mp4'), filters: [{ name: 'Video', extensions: ['mp4'] }] });
+    if (!output) return;
+
+    // Loudnorm filter
+    runAudioCommand(['-i', audioFile, '-af', 'loudnorm', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-y', output]);
+  });
+}
+
+async function runAudioCommand(args) {
+  progressOverlay.classList.remove('hidden');
+  progressOverlay.classList.add('flex');
+  initBatchUI([]); // Clear list
+  const statusText = document.getElementById('batch-status-text');
+  if (statusText) statusText.textContent = "Processing Audio...";
+
+  try {
+    const cmd = Command.sidecar('ffmpeg', args);
+    const res = await cmd.execute();
+    if (res.code === 0) showToast('Success!', 'success');
+    else showToast('Failed', 'error');
+  } catch (e) {
+    console.error(e);
+    showToast('Error', 'error');
+  } finally {
+    progressOverlay.classList.add('hidden');
+    progressOverlay.classList.remove('flex');
+  }
+}
+
+/* --- Inspector Logic --- */
+const inspectorDropzone = document.getElementById('inspector-dropzone');
+if (inspectorDropzone) {
+  inspectorDropzone.addEventListener('click', async () => {
+    const file = await open({ filters: [{ name: 'Video', extensions: SUPPORTED_EXTENSIONS }] });
+    if (file) inspectFile(file);
+  });
+  // Add drag drop later if needed
+}
+
+async function inspectFile(path) {
+  document.getElementById('inspector-results').classList.remove('hidden');
+  document.getElementById('meta-raw').textContent = "Loading...";
+
+  try {
+    const cmd = Command.sidecar('ffmpeg', ['-i', path, '-hide_banner']);
+    const res = await cmd.execute(); // FFmpeg returns 1 on "no output file" but prints stderr
+
+    // Output is in output (which is stdout+stderr?) or stderr?
+    // Command.sidecar output structure: { code, stdout, stderr }
+    const output = res.stderr;
+    document.getElementById('meta-raw').textContent = output;
+
+    // Parse basic info
+    const durMatch = output.match(/Duration: (\d{2}:\d{2}:\d{2}\.\d+)/);
+    const bitMatch = output.match(/bitrate: (\d+ kb\/s)/);
+    const streamMatch = output.match(/Stream #0:0.*: Video: (.*)/); // simplistic
+
+    if (durMatch) document.getElementById('meta-duration').textContent = durMatch[1];
+    if (bitMatch) document.getElementById('meta-bitrate').textContent = bitMatch[1];
+    if (streamMatch) {
+      const details = streamMatch[1].split(',');
+      if (details[0]) document.getElementById('meta-container').textContent = details[0]; // codec
+      // Size usually in stream details too "1920x1080"
+      const resMatch = streamMatch[1].match(/(\d{3,5}x\d{3,5})/);
+      if (resMatch) document.getElementById('meta-size').textContent = resMatch[1];
+    }
+
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 initTheme();
