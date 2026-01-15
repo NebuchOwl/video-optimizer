@@ -78,7 +78,7 @@ const progressText = document.getElementById('progress-text');
 const progressBar = document.getElementById('progress-bar');
 const cancelBtn = document.getElementById('cancel-btn');
 
-let selectedFilePath = null;
+let selectedFiles = [];
 let currentChildProcess = null;
 
 // Drag and Drop Logic
@@ -99,14 +99,26 @@ dropzone.addEventListener('drop', (e) => {
   dropzone.classList.remove('border-purple-500', 'bg-gray-800/50');
 
   if (e.dataTransfer.files.length) {
-    const file = e.dataTransfer.files[0];
-    // Try to get path
-    const path = file.path || file.name;
-    if (file.path) {
-      handleFileSelect(file.name, file.size, file.path);
+    const paths = [];
+    // Tauri specific: e.dataTransfer.files contains objects with 'path' property if configured?
+    // Actually in web drag drop we might not get full path unless Tauri intercepts.
+    // Assuming standard behavior where we extract names/paths if available.
+    for (let i = 0; i < e.dataTransfer.files.length; i++) {
+      const f = e.dataTransfer.files[i];
+      // In Tauri v2 drag drop, we usually get paths.
+      /* 
+         Note: If drop gives files with only name, we rely on user to pick via dialog. 
+         But let's try to capture 'path' property if exposed (Electron/Tauri often do).
+      */
+      if (f.path) paths.push(f.path);
+      else if (f.name) console.warn("File object missing path:", f.name);
+    }
+
+    if (paths.length > 0) {
+      selectedFiles = paths;
+      handleFileSelect(selectedFiles);
     } else {
-      // Specific error for Tauri environment constraints
-      alert("Drag & Drop received a file but could not access its full path (security restriction). \n\nPlease use the 'Select Video File' button instead.");
+      alert("Drag & Drop received files but could not access paths. Please use the Select button.");
     }
   }
 });
@@ -128,17 +140,19 @@ manualUploadBtn.addEventListener('click', async (e) => {
 
 async function triggerFileSelect() {
   try {
-    const file = await open({
-      multiple: false,
+    const selection = await open({
+      multiple: true,
       filters: [{
         name: 'Video',
         extensions: SUPPORTED_EXTENSIONS
       }]
     });
 
-    if (file) {
-      const name = file.replace(/^.*[\\\/]/, '');
-      handleFileSelect(name, 0, file);
+    if (selection) {
+      if (Array.isArray(selection)) selectedFiles = selection;
+      else selectedFiles = [selection];
+
+      handleFileSelect(selectedFiles);
     }
   } catch (err) {
     console.error("Failed to open dialog:", err);
@@ -150,21 +164,28 @@ changeFileBtn.addEventListener('click', (e) => {
   resetUI();
 });
 
-function handleFileSelect(name, size, path) {
-  selectedFilePath = path;
+function handleFileSelect(files) {
+  if (!files || files.length === 0) return;
 
   dropContent.classList.add('hidden');
   filePreview.classList.remove('hidden');
   filePreview.classList.add('flex');
 
-  filenameEl.textContent = name;
-  filesizeEl.textContent = size > 0 ? formatBytes(size) : 'Ready to encode';
+  if (files.length === 1) {
+    const path = files[0];
+    const name = path.replace(/^.*[\\\/]/, '');
+    filenameEl.textContent = name;
+    filesizeEl.textContent = 'Ready to encode';
+  } else {
+    filenameEl.textContent = `${files.length} Files Selected`;
+    filesizeEl.textContent = 'Batch Mode';
+  }
 
   optionsPanel.classList.remove('opacity-50', 'pointer-events-none');
 }
 
 function resetUI() {
-  selectedFilePath = null;
+  selectedFiles = [];
   dropContent.classList.remove('hidden');
   filePreview.classList.add('hidden');
   filePreview.classList.remove('flex');
@@ -287,159 +308,178 @@ if (defaultBtn) {
 
 
 optimizeBtn.addEventListener('click', async () => {
-  if (!selectedFilePath) return;
+  if (!selectedFiles || selectedFiles.length === 0) return;
 
-  // 1. Get Save Path
+  let fileQueue = [];
+  const isBatch = selectedFiles.length > 1;
+
+  // --- Determine Output Paths ---
   let defaultExt = '.mp4';
   if (isAdvancedMode && advCodec.value === 'prores_ks') defaultExt = '.mov';
   else if (isAdvancedMode && advCodec.value === 'gif') defaultExt = '.gif';
 
-  const defaultPath = selectedFilePath.replace(/(\.[^.]+)$/, '_optimized' + defaultExt);
+  if (!isBatch) {
+    // Single Mode
+    const selectedFilePath = selectedFiles[0];
+    const defaultPath = selectedFilePath.replace(/(\.[^.]+)$/, '_optimized' + defaultExt);
 
-  const outputPath = await save({
-    defaultPath: defaultPath,
-    filters: [{ name: 'Video', extensions: [defaultExt.substring(1)] }]
-  });
+    const outputPath = await save({
+      defaultPath: defaultPath,
+      filters: [{ name: 'Video', extensions: [defaultExt.substring(1)] }]
+    });
+    if (!outputPath) return;
+    fileQueue.push({ input: selectedFilePath, output: outputPath });
+  } else {
+    // Batch Mode
+    const dir = await open({
+      directory: true,
+      multiple: false,
+      title: "Select Output Folder for Batch Processing"
+    });
+    if (!dir) return;
 
-  if (!outputPath) return; // User Cancelled
+    selectedFiles.forEach(f => {
+      const name = f.replace(/^.*[\\\/]/, '');
+      const lastDot = name.lastIndexOf('.');
+      const base = lastDot > -1 ? name.substring(0, lastDot) : name;
+      // Use standard slash for consistency
+      fileQueue.push({ input: f, output: `${dir}/${base}_optimized${defaultExt}` });
+    });
+  }
 
+  // --- Execution Loop ---
   progressOverlay.classList.remove('hidden');
   progressOverlay.classList.add('flex');
   optimizeBtn.disabled = true;
-  document.getElementById('progress-text').textContent = "0%";
-  document.getElementById('progress-bar').style.width = "0%";
 
-  const ffmpegArgs = ['-i', selectedFilePath];
+  let successCount = 0;
+  let errorCount = 0;
 
-  if (isAdvancedMode) {
-    // ADVANCED LOGIC
-    const codec = advCodec.value;
+  for (let i = 0; i < fileQueue.length; i++) {
+    const { input, output } = fileQueue[i];
+    const pctPrefix = isBatch ? `File ${i + 1}/${fileQueue.length}: ` : '';
 
-    if (codec !== 'copy') {
-      ffmpegArgs.push('-c:v', codec);
-      ffmpegArgs.push('-crf', advCrf.value);
-      ffmpegArgs.push('-preset', advPreset.value);
-    } else {
-      ffmpegArgs.push('-c:v', 'copy');
-    }
+    document.getElementById('progress-text').textContent = `${pctPrefix}Starting...`;
+    document.getElementById('progress-bar').style.width = "0%";
 
-    // Resolution
-    if (advResolution.value === 'custom') {
-      const w = advResW.value || -1;
-      const h = advResH.value || -1;
-      if (w != -1 || h != -1) {
-        ffmpegArgs.push('-vf', `scale=${w}:${h}`);
+    const ffmpegArgs = ['-i', input];
+
+    // --- Advanced/Simple Logic ---
+    if (isAdvancedMode) {
+      const codec = advCodec.value;
+      if (codec !== 'copy') {
+        ffmpegArgs.push('-c:v', codec);
+        ffmpegArgs.push('-crf', advCrf.value);
+        ffmpegArgs.push('-preset', advPreset.value);
+      } else {
+        ffmpegArgs.push('-c:v', 'copy');
       }
-    } else if (advResolution.value !== 'original') {
-      ffmpegArgs.push('-vf', `scale=${advResolution.value}`);
-    }
+      // Resolution
+      if (advResolution.value === 'custom') {
+        const w = advResW.value || -1;
+        const h = advResH.value || -1;
+        if (w != -1 || h != -1) ffmpegArgs.push('-vf', `scale=${w}:${h}`);
+      } else if (advResolution.value !== 'original') {
+        ffmpegArgs.push('-vf', `scale=${advResolution.value}`);
+      }
+      // FPS
+      if (advFps.value === 'custom') {
+        if (advFpsCustom.value) ffmpegArgs.push('-r', advFpsCustom.value);
+      } else if (advFps.value !== 'original') {
+        ffmpegArgs.push('-r', advFps.value);
+      }
+      // Audio
+      if (advAudio.value === 'none') {
+        ffmpegArgs.push('-an');
+      } else if (advAudio.value !== 'copy') {
+        ffmpegArgs.push('-c:a', advAudio.value);
+      } else {
+        ffmpegArgs.push('-c:a', 'copy');
+      }
+      // Custom
+      if (advCustom.value.trim()) {
+        ffmpegArgs.push(...advCustom.value.trim().split(/\s+/));
+      }
 
-    // Frame Rate
-    if (advFps.value === 'custom') {
-      if (advFpsCustom.value) ffmpegArgs.push('-r', advFpsCustom.value);
-    } else if (advFps.value !== 'original') {
-      ffmpegArgs.push('-r', advFps.value);
-    }
-
-    // Audio
-    if (advAudio.value === 'none') {
-      ffmpegArgs.push('-an');
-    } else if (advAudio.value !== 'copy') {
-      ffmpegArgs.push('-c:a', advAudio.value);
     } else {
-      ffmpegArgs.push('-c:a', 'copy');
+      // Simple Mode
+      let crf = '23';
+      if (currentQuality === 'medium') crf = '18';
+      if (currentQuality === 'high') crf = '28';
+      const encoderMode = document.getElementById('encoder-select').value;
+      switch (encoderMode) {
+        case 'gpu-nvidia': ffmpegArgs.push('-c:v', 'h264_nvenc', '-cq', crf, '-preset', 'p4'); break;
+        case 'gpu-amd': ffmpegArgs.push('-c:v', 'h264_amf', '-qp-i', crf, '-qp-p', crf); break;
+        case 'gpu-intel': ffmpegArgs.push('-c:v', 'h264_qsv', '-global_quality', crf); break;
+        case 'cpu-low': ffmpegArgs.push('-vcodec', 'libx264', '-crf', crf, '-preset', 'medium', '-threads', '2'); break;
+        default: ffmpegArgs.push('-vcodec', 'libx264', '-crf', crf, '-preset', 'fast'); break;
+      }
     }
 
-    // Custom
-    if (advCustom.value.trim()) {
-      const flags = advCustom.value.trim().split(/\s+/);
-      ffmpegArgs.push(...flags);
-    }
+    ffmpegArgs.push('-y', output);
 
-  } else {
-    // SIMPLE LOGIC
-    let crf = '23';
-    if (currentQuality === 'medium') crf = '18';
-    if (currentQuality === 'high') crf = '28';
+    try {
+      const command = Command.sidecar('ffmpeg', ffmpegArgs);
+      console.log("Processing:", input, "to", output);
 
-    const encoderMode = document.getElementById('encoder-select').value;
+      // Wait for start to bind handlers? No, bind before spawn.
+      let durationSec = 0;
 
-    switch (encoderMode) {
-      case 'gpu-nvidia':
-        ffmpegArgs.push('-c:v', 'h264_nvenc', '-cq', crf, '-preset', 'p4');
-        break;
-      case 'gpu-amd':
-        ffmpegArgs.push('-c:v', 'h264_amf', '-qp-i', crf, '-qp-p', crf);
-        break;
-      case 'gpu-intel':
-        ffmpegArgs.push('-c:v', 'h264_qsv', '-global_quality', crf);
-        break;
-      case 'cpu-low':
-        ffmpegArgs.push('-vcodec', 'libx264', '-crf', crf, '-preset', 'medium', '-threads', '2');
-        break;
-      default: // cpu-fast
-        ffmpegArgs.push('-vcodec', 'libx264', '-crf', crf, '-preset', 'fast');
-        break;
+      command.stderr.on('data', line => {
+        // Duration Parse
+        const durMatch = line.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d+)/);
+        if (durMatch) {
+          durationSec = parseFloat(durMatch[1]) * 3600 + parseFloat(durMatch[2]) * 60 + parseFloat(durMatch[3]);
+        }
+        // Time Parse
+        if (durationSec > 0) {
+          const tMatch = line.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d+)/);
+          if (tMatch) {
+            const cur = parseFloat(tMatch[1]) * 3600 + parseFloat(tMatch[2]) * 60 + parseFloat(tMatch[3]);
+            const pct = Math.min(100, Math.round((cur / durationSec) * 100));
+            document.getElementById('progress-text').textContent = `${pctPrefix}${pct}%`;
+            document.getElementById('progress-bar').style.width = `${pct}%`;
+          }
+        }
+      });
+
+      currentChildProcess = await command.spawn();
+
+      await new Promise((resolve) => {
+        command.on('close', data => {
+          if (data.code === 0) successCount++;
+          else errorCount++;
+          resolve();
+        });
+        command.on('error', err => {
+          console.error(err);
+          errorCount++;
+          resolve();
+        });
+      });
+      currentChildProcess = null;
+
+    } catch (e) {
+      console.error(e);
+      showToast(`Error starting file ${i + 1}: ${e}`, 'error');
+      errorCount++;
     }
   }
 
-  ffmpegArgs.push('-y', outputPath);
+  // Done
+  progressOverlay.classList.add('hidden');
+  progressOverlay.classList.remove('flex');
+  optimizeBtn.disabled = false;
 
-  try {
-    const command = Command.sidecar('ffmpeg', ffmpegArgs);
-    console.log("FFmpeg Command:", ffmpegArgs.join(' '));
-
-    // Get output for progress
-    command.on('close', data => {
-      progressOverlay.classList.add('hidden');
-      progressOverlay.classList.remove('flex');
-      optimizeBtn.disabled = false;
-      currentChildProcess = null;
-      if (data.code === 0) {
-        showToast(`Optimization Complete!\nSaved to: ${outputPath}`, 'success');
-        resetUI();
-      } else {
-        showToast('Optimization Failed', 'error');
-      }
-    });
-
-    command.on('error', error => {
-      console.error("Spawn Error:", error);
-      progressOverlay.classList.add('hidden');
-      progressOverlay.classList.remove('flex');
-      optimizeBtn.disabled = false;
-      showToast(`Process Error: ${error}`, 'error');
-    });
-
-    // Progress Parsing
-    const videoElement = document.getElementById('video-player');
-    let duration = 1;
-    if (videoElement && videoElement.duration && !isNaN(videoElement.duration)) {
-      duration = videoElement.duration;
+  if (successCount > 0) {
+    if (errorCount === 0) {
+      showToast(`Done! All ${successCount} files processed.`, 'success');
+      resetUI();
+    } else {
+      showToast(`Completed: ${successCount} Success, ${errorCount} Failed.`, 'info');
     }
-
-    command.stderr.on('data', line => {
-      // Parse "time=HH:MM:SS.mm"
-      const tMatch = line.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d+)/);
-      if (tMatch) {
-        const h = parseFloat(tMatch[1]);
-        const m = parseFloat(tMatch[2]);
-        const s = parseFloat(tMatch[3]);
-        const currentSeconds = h * 3600 + m * 60 + s;
-        const pct = Math.min(100, Math.round((currentSeconds / duration) * 100));
-        document.getElementById('progress-text').textContent = pct + "%";
-        document.getElementById('progress-bar').style.width = pct + "%";
-      }
-    });
-
-    currentChildProcess = await command.spawn();
-
-  } catch (e) {
-    console.error(e);
-    alert('Execution Error: ' + e);
-    progressOverlay.classList.add('hidden');
-    progressOverlay.classList.remove('flex');
-    optimizeBtn.disabled = false;
+  } else if (errorCount > 0) {
+    showToast('Batch processing failed.', 'error');
   }
 });
 
@@ -686,7 +726,15 @@ trimActionBtn.addEventListener('click', async () => {
   if (!trimFilePath) return;
 
   const lastDot = trimFilePath.lastIndexOf('.');
-  const output = trimFilePath.substring(0, lastDot) + '_trimmed' + trimFilePath.substring(lastDot);
+  const ext = trimFilePath.substring(lastDot);
+  const defaultPath = trimFilePath.substring(0, lastDot) + '_trimmed' + ext;
+
+  const output = await save({
+    defaultPath: defaultPath,
+    filters: [{ name: 'Video', extensions: [ext.substring(1)] }]
+  });
+
+  if (!output) return;
 
   // Precision Calculation
   const start = trimState.start;
@@ -716,12 +764,14 @@ trimActionBtn.addEventListener('click', async () => {
     const res = await command.execute();
 
     if (res.code === 0) {
-      alert(`Trim Successful!\nSaved to: ${output}`);
+      showToast(`Trim Successful!\nSaved to: ${output}`, 'success');
     } else {
-      alert(`Trim Failed: ${res.stderr}`);
+      showToast('Trim Failed', 'error');
+      console.error(res.stderr);
     }
   } catch (e) {
-    alert(e);
+    showToast('Execution Error', 'error');
+    console.error(e);
   } finally {
     progressOverlay.classList.add('hidden');
     progressOverlay.classList.remove('flex');
@@ -741,7 +791,7 @@ const converterControls = document.getElementById('converter-controls');
 const convertFormatSelect = document.getElementById('convert-format-select');
 const convertActionBtn = document.getElementById('convert-action-btn');
 
-let converterFilePath = null;
+let converterFiles = [];
 
 // Populate Formats
 const EXT_TO_LABEL = {
@@ -767,32 +817,39 @@ CONVERT_TARGETS.forEach(ext => {
 
 async function loadConverterFile() {
   try {
-    const file = await open({
-      multiple: false,
+    const selection = await open({
+      multiple: true,
       filters: [{ name: 'Media', extensions: SUPPORTED_EXTENSIONS }]
     });
-    if (file) {
-      setupConverterFile(file);
+    if (selection) {
+      if (Array.isArray(selection)) converterFiles = selection;
+      else converterFiles = [selection];
+
+      setupConverterFile(converterFiles);
     }
   } catch (e) {
     console.error(e);
   }
 }
 
-function setupConverterFile(path) {
-  converterFilePath = path;
-  const name = path.replace(/^.*[\\\/]/, '');
-  converterFilename.textContent = name;
+function setupConverterFile(files) {
+  if (!files || files.length === 0) return;
 
-  // UI State
   converterUploadContent.classList.add('hidden');
   converterFileInfo.classList.remove('hidden');
   converterFileInfo.classList.add('flex');
   converterControls.classList.remove('opacity-50', 'pointer-events-none');
+
+  if (files.length === 1) {
+    const name = files[0].replace(/^.*[\\\/]/, '');
+    converterFilename.textContent = name;
+  } else {
+    converterFilename.textContent = `${files.length} Files Selected (Batch)`;
+  }
 }
 
 converterDropzone.addEventListener('click', (e) => {
-  if (!converterFilePath) loadConverterFile();
+  if (converterFiles.length === 0) loadConverterFile();
 });
 
 converterSelectBtn.addEventListener('click', (e) => {
@@ -806,37 +863,111 @@ converterChangeBtn.addEventListener('click', (e) => {
 });
 
 convertActionBtn.addEventListener('click', async () => {
-  if (!converterFilePath) return;
+  if (!converterFiles || converterFiles.length === 0) return;
 
+  const isBatch = converterFiles.length > 1;
   const targetExt = convertFormatSelect.value;
-  const lastDot = converterFilePath.lastIndexOf('.');
-  const output = converterFilePath.substring(0, lastDot) + '_converted.' + targetExt;
+  let fileQueue = [];
 
+  // --- Paths ---
+  if (!isBatch) {
+    const converterFilePath = converterFiles[0];
+    const lastDot = converterFilePath.lastIndexOf('.');
+    const defaultPath = converterFilePath.substring(0, lastDot) + '_converted.' + targetExt;
+
+    const output = await save({
+      defaultPath: defaultPath,
+      filters: [{ name: 'Media', extensions: [targetExt] }]
+    });
+
+    if (!output) return;
+    fileQueue.push({ input: converterFilePath, output: output });
+  } else {
+    const dir = await open({
+      directory: true,
+      multiple: false,
+      title: "Select Output Folder for Converted Files"
+    });
+    if (!dir) return;
+
+    converterFiles.forEach(f => {
+      const name = f.replace(/^.*[\\\/]/, '');
+      const lastDot = name.lastIndexOf('.');
+      const base = lastDot > -1 ? name.substring(0, lastDot) : name;
+      fileQueue.push({ input: f, output: `${dir}/${base}_converted.${targetExt}` });
+    });
+  }
+
+  // --- Loop ---
   progressOverlay.classList.remove('hidden');
   progressOverlay.classList.add('flex');
   convertActionBtn.disabled = true;
 
-  try {
-    // Build FFmpeg args
-    // Default: ffmpeg -i input -y output
-    const args = ['-i', converterFilePath];
+  let successCount = 0;
+  let errorCount = 0;
 
-    args.push('-y', output);
+  for (let i = 0; i < fileQueue.length; i++) {
+    const { input, output } = fileQueue[i];
+    const pctPrefix = isBatch ? `File ${i + 1}/${fileQueue.length}: ` : '';
 
-    const command = Command.sidecar('ffmpeg', args);
-    const res = await command.execute();
+    document.getElementById('progress-text').textContent = `${pctPrefix}Starting...`;
+    document.getElementById('progress-bar').style.width = "0%";
 
-    if (res.code === 0) {
-      alert(`Conversion Successful!\nSaved to: ${output}`);
-    } else {
-      alert(`Conversion Failed: ${res.stderr}`);
+    const args = ['-i', input, '-y', output];
+
+    try {
+      const command = Command.sidecar('ffmpeg', args);
+      console.log("Converting", input);
+
+      let durationSec = 0;
+      command.stderr.on('data', line => {
+        const durMatch = line.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d+)/);
+        if (durMatch) {
+          durationSec = parseFloat(durMatch[1]) * 3600 + parseFloat(durMatch[2]) * 60 + parseFloat(durMatch[3]);
+        }
+        if (durationSec > 0) {
+          const tMatch = line.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d+)/);
+          if (tMatch) {
+            const cur = parseFloat(tMatch[1]) * 3600 + parseFloat(tMatch[2]) * 60 + parseFloat(tMatch[3]);
+            const pct = Math.min(100, Math.round((cur / durationSec) * 100));
+            document.getElementById('progress-text').textContent = `${pctPrefix}${pct}%`;
+            document.getElementById('progress-bar').style.width = `${pct}%`;
+          }
+        }
+      });
+
+      currentChildProcess = await command.spawn();
+
+      await new Promise((resolve) => {
+        command.on('close', d => {
+          if (d.code === 0) successCount++;
+          else errorCount++;
+          resolve();
+        });
+        command.on('error', () => { errorCount++; resolve(); });
+      });
+      currentChildProcess = null;
+
+    } catch (e) {
+      console.error(e);
+      showToast(`Error on file ${i + 1}`, 'error');
+      errorCount++;
     }
-  } catch (e) {
-    alert(e);
-  } finally {
-    progressOverlay.classList.add('hidden');
-    progressOverlay.classList.remove('flex');
-    convertActionBtn.disabled = false;
+  }
+
+  // Done
+  progressOverlay.classList.add('hidden');
+  progressOverlay.classList.remove('flex');
+  convertActionBtn.disabled = false;
+
+  if (successCount > 0) {
+    if (errorCount === 0) {
+      showToast(`All ${successCount} files converted!`, 'success');
+    } else {
+      showToast(`Done: ${successCount} Success, ${errorCount} Failed`, 'info');
+    }
+  } else if (errorCount > 0) {
+    showToast('Conversion Batch Failed', 'error');
   }
 });
 
