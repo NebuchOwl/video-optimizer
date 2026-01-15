@@ -29,6 +29,23 @@
         }
       ]
     },
-    "dialog:default"
+    {
+      "identifier": "shell:allow-open",
+      "allow": [
+        {
+          "href": "^.*$"
+        }
+      ]
+    },
+    "dialog:default",
+    "fs:default",
+    {
+      "identifier": "fs:allow-read",
+      "allow": [
+        {
+          "path": "**"
+        }
+      ]
+    }
   ]
 }

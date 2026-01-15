@@ -2,8 +2,144 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+    --bg-primary: #111827;
+    --bg-secondary: #1f2937;
+    --bg-tertiary: #374151;
+    --bg-input: #111827;
+    --text-primary: #ffffff;
+    --text-secondary: #9ca3af;
+    --border-color: #374151;
+    --accent-color: #a855f7;
+}
+
+body.theme-light {
+    --bg-primary: #f3f4f6;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e5e7eb;
+    --bg-input: #ffffff;
+    --text-primary: #111827;
+    --text-secondary: #4b5563;
+    --border-color: #e5e7eb;
+}
+
+body.theme-midnight {
+    --bg-primary: linear-gradient(135deg, #020617 0%, #1e1b4b 100%);
+    --bg-secondary: rgba(15, 23, 42, 0.85);
+    /* Increased contrast */
+    --bg-tertiary: rgba(30, 41, 59, 0.85);
+    --bg-input: #0f172a;
+    /* Solid darkest blue */
+    --text-primary: #e2e8f0;
+    --text-secondary: #cbd5e1;
+    /* Lighter gray for better readout */
+    --border-color: rgba(148, 163, 184, 0.3);
+    backdrop-filter: blur(10px);
+}
+
+body.theme-sunset {
+    --bg-primary: linear-gradient(135deg, #2a0a1a 0%, #4a044e 100%);
+    --bg-secondary: rgba(40, 10, 20, 0.85);
+    /* Increased contrast */
+    --bg-tertiary: rgba(80, 20, 40, 0.85);
+    --bg-input: #2a0a1a;
+    /* Solid darkest red */
+    --text-primary: #fce7f3;
+    --text-secondary: #fbcfe8;
+    --border-color: rgba(236, 72, 153, 0.3);
+    backdrop-filter: blur(10px);
+}
+
+/* Utility Classes */
+.bg-theme-primary {
+    background: var(--bg-primary);
+}
+
+.bg-theme-secondary {
+    background: var(--bg-secondary);
+}
+
+.bg-theme-tertiary {
+    background: var(--bg-tertiary);
+}
+
+.text-theme-primary {
+    color: var(--text-primary);
+}
+
+.text-theme-secondary {
+    color: var(--text-secondary);
+}
+
+.border-theme {
+    border-color: var(--border-color);
+}
+
 @layer components {
     .option-btn {
-        @apply p-4 rounded-xl bg-gray-800 border border-gray-700 text-left transition-all hover:bg-gray-700 focus:outline-none;
+        @apply p-4 rounded-xl bg-theme-secondary border border-theme text-left transition-all hover:brightness-110 focus:outline-none text-theme-primary;
     }
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+/* Dynamic Theme Overrides */
+.bg-gray-900 {
+    background: var(--bg-primary) !important;
+}
+
+.bg-gray-800 {
+    background: var(--bg-secondary) !important;
+}
+
+.bg-gray-700 {
+    background-color: var(--bg-tertiary) !important;
+}
+
+.text-gray-400,
+.text-gray-500,
+.text-gray-300,
+.text-gray-600 {
+    color: var(--text-secondary) !important;
+}
+
+.border-gray-700,
+.border-gray-800,
+.border-gray-600 {
+    border-color: var(--border-color) !important;
+}
+
+.text-white {
+    color: var(--text-primary) !important;
+}
+
+/* Input/Select Specific Overrides to avoid Gradients in Fields */
+input[class*="bg-gray-900"],
+select[class*="bg-gray-900"],
+textarea[class*="bg-gray-900"] {
+    background: var(--bg-input) !important;
+}
+
+/* Force white text on primary action buttons */
+button[class*='bg-blue-600'],
+button[class*='bg-purple-600'],
+button[class*='to-pink-600'] {
+    color: white !important;
 }

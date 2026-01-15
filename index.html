@@ -9,90 +9,554 @@
   <link href="./src/style.css" rel="stylesheet">
 </head>
 
-<body class="bg-gray-900 text-white h-screen overflow-hidden selection:bg-purple-500 selection:text-white">
-  <div id="app" class="h-full flex flex-col items-center justify-center p-8 text-center">
-    <div class="mb-8 space-y-2">
-      <h1 class="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-600">
-        Video Optimizer
-      </h1>
-      <p class="text-gray-400">Reduce file size without losing quality</p>
+<body
+  class="bg-gray-900 text-white h-screen overflow-hidden selection:bg-purple-500 selection:text-white flex font-sans">
+
+  <!-- Sidebar -->
+  <aside
+    class="w-20 lg:w-64 bg-gray-800 flex flex-col border-r border-gray-700 shadow-xl z-20 transition-all duration-300">
+    <div class="p-4 lg:p-6 flex items-center justify-center lg:justify-start space-x-3 border-b border-gray-700 h-20">
+      <div class="w-8 h-8 min-w-[2rem] bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg shadow-lg"></div>
+      <span class="text-xl font-bold tracking-wide hidden lg:block">VideoOps</span>
     </div>
 
-    <div id="dropzone"
-      class="w-full max-w-2xl border-2 border-dashed border-gray-700 rounded-2xl p-12 transition-all duration-300 hover:border-purple-500 hover:bg-gray-800/50 cursor-pointer group relative">
-      <input type="file" id="file-input" class="hidden" accept="video/*" />
-
-      <div id="drop-content" class="flex flex-col items-center space-y-4 pointer-events-none">
-        <div class="p-4 bg-gray-800 rounded-full group-hover:bg-purple-500/20 transition-colors">
-          <svg class="w-10 h-10 text-gray-500 group-hover:text-purple-400" fill="none" stroke="currentColor"
-            viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-          </svg>
-        </div>
-        <button id="manual-upload-btn"
-          class="pointer-events-auto px-6 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-white font-medium transition-colors shadow-lg border border-gray-700">
-          Select Video File
-        </button>
-        <div class="text-sm text-gray-500">
-          or drag and drop here <br> (MP4, MOV, MKV up to 2GB)
-        </div>
-      </div>
-
-      <div id="file-preview" class="hidden flex-col items-center space-y-4">
-        <svg class="w-12 h-12 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <nav class="flex-1 overflow-y-auto py-6 space-y-2 px-2 lg:px-3">
+      <button
+        class="nav-btn w-full text-left px-2 lg:px-4 py-3 rounded-xl flex items-center justify-center lg:justify-start space-x-0 lg:space-x-3 bg-purple-600/20 text-purple-300 border border-purple-500/30 group"
+        data-target="view-optimizer" title="Optimizer">
+        <svg class="w-6 h-6 min-w-[1.5rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+        </svg>
+        <span class="hidden lg:block truncate">Optimizer</span>
+      </button>
+      <button
+        class="nav-btn w-full text-left px-2 lg:px-4 py-3 rounded-xl flex items-center justify-center lg:justify-start space-x-0 lg:space-x-3 text-gray-400 hover:bg-gray-700 hover:text-white transition-all group"
+        data-target="view-trimmer" title="Trimmer">
+        <svg class="w-6 h-6 min-w-[1.5rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z">
+            d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm8.486-8.486a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243z">
           </path>
         </svg>
-        <div class="text-left w-full bg-gray-800 p-4 rounded-lg border border-gray-700">
-          <p id="filename" class="font-mono text-sm text-purple-300 truncate">video.mp4</p>
-          <p id="filesize" class="text-xs text-gray-500 mt-1">102.5 MB</p>
-        </div>
-        <button id="change-file-btn" class="text-sm text-gray-400 hover:text-white underline">Change file</button>
-      </div>
-    </div>
-
-    <div id="options-panel"
-      class="w-full max-w-2xl mt-8 opacity-50 pointer-events-none transition-opacity duration-300">
-      <div class="mb-6">
-        <label class="block text-left text-sm font-medium text-gray-400 mb-2">Processing Mode</label>
-        <select id="encoder-select"
-          class="w-full bg-gray-800 border border-gray-700 text-white rounded-lg p-3 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all">
-          <option value="cpu-fast">Software (Standard) - High CPU</option>
-          <option value="cpu-low">Software (Low Usage) - Slower</option>
-          <option value="gpu-nvidia">NVIDIA GPU (NVENC)</option>
-          <option value="gpu-amd">AMD GPU (AMF)</option>
-          <option value="gpu-intel">Intel GPU (QSV)</option>
-        </select>
-      </div>
-
-      <label class="block text-left text-sm font-medium text-gray-400 mb-2">Compression Level</label>
-      <div class="grid grid-cols-3 gap-4">
-        <button class="option-btn active" data-quality="low">
-          <span class="block text-white font-bold">Balanced</span>
-          <span class="block text-xs text-gray-500">Good quality, medium size</span>
-        </button>
-        <button class="option-btn" data-quality="medium">
-          <span class="block text-white font-bold">High Quality</span>
-          <span class="block text-xs text-gray-500">Larger size, better look</span>
-        </button>
-        <button class="option-btn" data-quality="high">
-          <span class="block text-white font-bold">Maximum</span>
-          <span class="block text-xs text-gray-500">Smallest size, lower quality</span>
-        </button>
-      </div>
-
-      <button id="optimize-btn"
-        class="w-full mt-8 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-4 px-6 rounded-xl shadow-lg transform transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
-        Optimize Video
+        <span class="hidden lg:block truncate">Trimmer</span>
       </button>
+      <button
+        class="nav-btn w-full text-left px-2 lg:px-4 py-3 rounded-xl flex items-center justify-center lg:justify-start space-x-0 lg:space-x-3 text-gray-400 hover:bg-gray-700 hover:text-white transition-all group"
+        data-target="view-converter" title="Converter">
+        <svg class="w-6 h-6 min-w-[1.5rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+          </path>
+        </svg>
+        <span class="hidden lg:block truncate">Converter</span>
+      </button>
+      <button
+        class="nav-btn w-full text-left px-2 lg:px-4 py-3 rounded-xl flex items-center justify-center lg:justify-start space-x-0 lg:space-x-3 text-gray-400 hover:bg-gray-700 hover:text-white transition-all group"
+        data-target="view-settings" title="Settings">
+        <svg class="w-6 h-6 min-w-[1.5rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+          </path>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z">
+          </path>
+        </svg>
+        <span class="hidden lg:block truncate">Settings</span>
+      </button>
+    </nav>
+
+    <div class="p-4 border-t border-gray-700 text-xs text-center text-gray-500 hidden lg:block">
+      v0.1.0 Beta
     </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 relative overflow-hidden bg-gray-900">
+
+    <!-- View: Optimizer (Default) -->
+    <section id="view-optimizer"
+      class="view-section h-full w-full overflow-y-auto p-4 lg:p-8 flex flex-col items-center">
+      <div class="mb-4 lg:mb-8 space-y-2 text-center">
+        <h1 class="text-2xl lg:text-3xl font-bold text-white">Video Optimizer</h1>
+        <p class="text-sm lg:text-base text-gray-400">Reduce file size without losing quality</p>
+      </div>
+
+      <div id="dropzone"
+        class="w-full max-w-2xl border-2 border-dashed border-gray-700 rounded-2xl p-8 lg:p-10 transition-all duration-300 hover:border-purple-500 hover:bg-gray-800/50 cursor-pointer group relative">
+        <input type="file" id="file-input" class="hidden" accept="video/*" />
+
+        <div id="drop-content" class="flex flex-col items-center space-y-4 pointer-events-none">
+          <div class="p-4 bg-gray-800 rounded-full group-hover:bg-purple-500/20 transition-colors">
+            <svg class="w-10 h-10 text-gray-500 group-hover:text-purple-400" fill="none" stroke="currentColor"
+              viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+            </svg>
+          </div>
+          <button id="manual-upload-btn"
+            class="pointer-events-auto px-6 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-white font-medium transition-colors shadow-lg border border-gray-700">
+            Select Video File
+          </button>
+          <div class="text-sm text-gray-500 text-center">
+            or drag and drop here <br> (MP4, MKV, GIF, WebM)
+          </div>
+        </div>
+
+        <div id="file-preview" class="hidden flex-col items-center space-y-4">
+          <svg class="w-12 h-12 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z">
+            </path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          <div class="text-left w-full bg-gray-800 p-4 rounded-lg border border-gray-700">
+            <p id="filename" class="font-mono text-sm text-purple-300 truncate">video.mp4</p>
+            <p id="filesize" class="text-xs text-gray-500 mt-1">102.5 MB</p>
+          </div>
+          <button id="change-file-btn" class="text-sm text-gray-400 hover:text-white underline">Change file</button>
+        </div>
+      </div>
+
+      <div id="options-panel"
+        class="w-full max-w-2xl mt-8 opacity-50 pointer-events-none transition-opacity duration-300 pb-8 flex-none">
+
+        <!-- Mode Toggle -->
+        <div class="flex justify-center mb-6 bg-gray-800 p-1 rounded-lg inline-flex mx-auto w-max pointer-events-auto">
+          <button id="mode-simple-btn"
+            class="px-4 py-2 rounded-md text-sm font-medium bg-gray-700 text-white shadow transition-all">Presets</button>
+          <button id="mode-advanced-btn"
+            class="px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white transition-all">Advanced</button>
+        </div>
+
+        <!-- Simple Mode -->
+        <div id="panel-simple" class="space-y-6">
+          <div class="mb-6">
+            <label class="block text-left text-sm font-medium text-gray-400 mb-2">Processing Mode</label>
+            <select id="encoder-select"
+              class="w-full bg-gray-800 border border-gray-700 text-white rounded-lg p-3 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all">
+              <option value="cpu-fast">Software (Standard) - High CPU</option>
+              <option value="cpu-low">Software (Low Usage) - Slower</option>
+              <option value="gpu-nvidia">NVIDIA GPU (NVENC)</option>
+              <option value="gpu-amd">AMD GPU (AMF)</option>
+              <option value="gpu-intel">Intel GPU (QSV)</option>
+            </select>
+          </div>
+
+          <label class="block text-left text-sm font-medium text-gray-400 mb-2">Compression Level</label>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <button
+              class="option-btn active flex flex-col items-center justify-center p-4 bg-gray-800 border border-gray-700 rounded-xl hover:bg-gray-700 hover:border-purple-500 transition-all"
+              data-quality="low">
+              <span class="block text-white font-bold">Balanced</span>
+              <span class="block text-xs text-gray-500">Good quality, medium size</span>
+            </button>
+            <button
+              class="option-btn flex flex-col items-center justify-center p-4 bg-gray-800 border border-gray-700 rounded-xl hover:bg-gray-700 hover:border-purple-500 transition-all"
+              data-quality="medium">
+              <span class="block text-white font-bold">High Quality</span>
+              <span class="block text-xs text-gray-500">Larger size, better look</span>
+            </button>
+            <button
+              class="option-btn flex flex-col items-center justify-center p-4 bg-gray-800 border border-gray-700 rounded-xl hover:bg-gray-700 hover:border-purple-500 transition-all"
+              data-quality="high">
+              <span class="block text-white font-bold">Maximum</span>
+              <span class="block text-xs text-gray-500">Smallest size</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Advanced Mode -->
+        <div id="panel-advanced" class="hidden space-y-6 bg-gray-800 p-6 rounded-2xl border border-gray-700">
+          <!-- Settings Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Codec -->
+            <div>
+              <label class="block text-gray-400 text-xs uppercase font-bold mb-2">Video Codec</label>
+              <select id="adv-codec"
+                class="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500">
+                <option value="libx264" selected>H.264 (Standard)</option>
+                <option value="libx265">H.265 (HEVC)</option>
+                <option value="libaom-av1">AV1 (Next Gen)</option>
+                <option value="libvpx-vp9">VP9 (Web)</option>
+                <option value="libvpx">VP8 (Legacy)</option>
+                <option value="prores_ks">ProRes (Editing)</option>
+                <option value="copy">Copy (No Re-encode)</option>
+              </select>
+            </div>
+            <!-- Preset -->
+            <div>
+              <label class="block text-gray-400 text-xs uppercase font-bold mb-2">Preset (Speed/Comp)</label>
+              <select id="adv-preset"
+                class="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500">
+                <option value="ultrafast">Ultrafast (Low Quality)</option>
+                <option value="superfast">Superfast</option>
+                <option value="veryfast">Veryfast</option>
+                <option value="faster">Faster</option>
+                <option value="fast">Fast</option>
+                <option value="medium" selected>Medium (Balanced)</option>
+                <option value="slow">Slow</option>
+                <option value="slower">Slower (Best Size)</option>
+              </select>
+            </div>
+            <!-- CRF -->
+            <div class="col-span-2">
+              <div class="flex justify-between mb-2">
+                <label class="text-gray-400 text-xs uppercase font-bold">Quality (CRF)</label>
+                <span id="adv-crf-val" class="text-purple-400 font-mono text-xs">23</span>
+              </div>
+              <input type="range" id="adv-crf" min="0" max="51" value="23" step="1"
+                class="w-full accent-purple-500 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+              <div class="flex justify-between text-[10px] text-gray-500 mt-1">
+                <span>High Quality (0)</span>
+                <span>Low Quality (51)</span>
+              </div>
+            </div>
+            <!-- Resolution -->
+            <div>
+              <label class="block text-gray-400 text-xs uppercase font-bold mb-2">Resolution</label>
+              <select id="adv-resolution"
+                class="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm text-white">
+                <option value="original" selected>Original</option>
+                <option value="3840:-2">4K (2160p)</option>
+                <option value="2560:-2">2K (1440p)</option>
+                <option value="1920:-2">1080p</option>
+                <option value="1280:-2">720p</option>
+                <option value="854:-2">480p</option>
+                <option value="custom">Custom</option>
+              </select>
+              <div id="adv-res-custom" class="hidden flex space-x-2 mt-2">
+                <input type="number" id="adv-res-w" placeholder="W"
+                  class="w-1/2 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:ring-1 focus:ring-purple-500 outline-none">
+                <input type="number" id="adv-res-h" placeholder="H"
+                  class="w-1/2 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:ring-1 focus:ring-purple-500 outline-none">
+              </div>
+            </div>
+
+            <!-- Frame Rate -->
+            <div>
+              <label class="block text-gray-400 text-xs uppercase font-bold mb-2">Frame Rate</label>
+              <div class="flex space-x-2">
+                <select id="adv-fps"
+                  class="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:ring-2 focus:ring-purple-500">
+                  <option value="original" selected>Original</option>
+                  <option value="24">24 FPS</option>
+                  <option value="25">25 FPS</option>
+                  <option value="30">30 FPS</option>
+                  <option value="60">60 FPS</option>
+                  <option value="custom">Custom</option>
+                </select>
+                <input type="number" id="adv-fps-custom" placeholder="FPS"
+                  class="hidden w-24 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:ring-1 focus:ring-purple-500 outline-none">
+              </div>
+            </div>
+
+            <!-- Audio -->
+            <div>
+              <label class="block text-gray-400 text-xs uppercase font-bold mb-2">Audio</label>
+              <select id="adv-audio"
+                class="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm text-white">
+                <option value="copy" selected>Copy (Original)</option>
+                <option value="aac">AAC (Standard)</option>
+                <option value="libopus">Opus (High Efficiency)</option>
+                <option value="mp3">MP3</option>
+                <option value="none">No Audio (Remove)</option>
+              </select>
+            </div>
+            <!-- Custom Command -->
+            <div class="col-span-2 border-t border-gray-700 pt-4">
+              <label class="block text-gray-400 text-xs uppercase font-bold mb-2">Custom FFmpeg Flags</label>
+              <input type="text" id="adv-custom" placeholder="-vf hqdn3d -tune animation"
+                class="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-purple-300 placeholder-gray-600">
+              <p class="text-[10px] text-gray-500 mt-1">Appended to the basic command. Use with caution.</p>
+            </div>
+          </div>
+        </div>
+
+        <button id="optimize-btn"
+          class="w-full mt-8 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-4 px-6 rounded-xl shadow-lg transform transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
+          Optimize Video
+        </button>
+      </div>
+    </section>
+
+    <!-- View: Trimmer -->
+    <section id="view-trimmer" class="view-section hidden h-full w-full p-4 lg:p-8 overflow-hidden">
+      <div class="max-w-6xl w-full mx-auto flex flex-col items-center h-full">
+        <h2 class="text-2xl lg:text-3xl font-bold mb-4 lg:mb-6 text-center flex-none">Video Trimmer</h2>
+
+        <!-- Trimmer Upload/Preview Area -->
+        <div id="trim-dropzone"
+          class="w-full flex-1 min-h-0 bg-black border-2 border-dashed border-gray-700 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-gray-800/30 transition-all relative overflow-hidden shadow-2xl">
+
+          <div id="trim-upload-content"
+            class="text-center p-8 absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none">
+            <svg class="w-12 h-12 text-gray-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z">
+              </path>
+            </svg>
+            <p class="text-gray-400 bg-gray-900/50 px-4 py-2 rounded-lg">Click to load video</p>
+          </div>
+
+          <!-- Video Container -->
+          <div id="video-container" class="hidden w-full h-full relative group">
+            <video id="trim-video-preview" class="w-full h-full object-contain" controls></video>
+
+            <!-- Controls Overlay (Hover) -->
+            <div
+              class="absolute top-4 right-4 flex space-x-2 z-20 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+              <button id="trim-change-file"
+                class="bg-black/70 hover:bg-black text-white text-xs px-3 py-2 rounded backdrop-blur-sm border border-gray-600/50">Change
+                Video</button>
+            </div>
+
+            <!-- External Player Fallback -->
+            <!-- Moved outside -->
+          </div>
+        </div>
+
+        <button id="open-external-btn"
+          class="hidden mb-6 text-xs text-gray-500 hover:text-purple-400 underline transition-colors flex items-center space-x-2 w-full justify-center">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+          </svg>
+          <span>Preview issues? Open in System Player</span>
+        </button>
+
+        <!-- Trimmer Controls -->
+        <div id="trim-controls"
+          class="w-full bg-gray-800 p-4 lg:p-6 rounded-xl border border-gray-700 opacity-50 pointer-events-none mt-4 flex-none">
+          <!-- Visual Timeline -->
+          <div class="mb-8 px-2">
+            <!-- Time Display Header -->
+            <div class="flex justify-between items-end mb-2">
+              <div class="text-left">
+                <span class="block text-[10px] text-gray-500 uppercase tracking-wider">Start</span>
+                <span id="timeline-start-display" class="text-xl font-mono text-purple-400 font-bold">00:00:00</span>
+              </div>
+              <div class="text-right">
+                <span class="block text-[10px] text-gray-500 uppercase tracking-wider">End</span>
+                <span id="timeline-end-display" class="text-xl font-mono text-purple-400 font-bold">00:00:00</span>
+              </div>
+            </div>
+
+            <!-- Timeline Track -->
+            <div id="timeline-track"
+              class="relative w-full h-14 bg-gray-900 rounded-lg cursor-pointer select-none border border-gray-700 overflow-visible group">
+              <!-- Ticks background -->
+              <div class="absolute inset-0 opacity-20 pointer-events-none overflow-hidden rounded-lg">
+                <div
+                  class="w-full h-full bg-[repeating-linear-gradient(90deg,transparent,transparent_4px,#555_4px,#555_5px)]">
+                </div>
+              </div>
+
+              <!-- Selection Region (Purple Area) -->
+              <div id="timeline-range-bar"
+                class="absolute top-0 bottom-0 bg-purple-600/20 border-t-2 border-b-2 border-purple-500 z-10 pointer-events-none"
+                style="left: 0%; right: 0%;"></div>
+
+              <!-- Start Handle -->
+              <div id="handle-start"
+                class="absolute top-0 bottom-0 w-4 -ml-2 hover:z-30 z-20 cursor-ew-resize flex flex-col items-center justify-center group/handle transition-colors"
+                style="left: 0%">
+                <div
+                  class="h-full w-0.5 bg-purple-400 group-hover/handle:bg-white shadow-[0_0_10px_rgba(168,85,247,0.5)]">
+                </div>
+                <div
+                  class="absolute top-1/2 -translate-y-1/2 w-4 h-8 bg-purple-600 rounded-md shadow-md flex items-center justify-center group-hover/handle:bg-purple-500">
+                  <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                  </svg>
+                </div>
+              </div>
+
+              <!-- End Handle -->
+              <div id="handle-end"
+                class="absolute top-0 bottom-0 w-4 -ml-2 hover:z-30 z-20 cursor-ew-resize flex flex-col items-center justify-center group/handle transition-colors"
+                style="left: 100%">
+                <div
+                  class="h-full w-0.5 bg-purple-400 group-hover/handle:bg-white shadow-[0_0_10px_rgba(168,85,247,0.5)]">
+                </div>
+                <div
+                  class="absolute top-1/2 -translate-y-1/2 w-4 h-8 bg-purple-600 rounded-md shadow-md flex items-center justify-center group-hover/handle:bg-purple-500">
+                  <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-between text-[10px] text-gray-500 font-mono mt-1">
+              <span id="timeline-total-start">00:00</span>
+              <div class="text-center text-gray-600">Drag handles to trim</div>
+              <span id="timeline-total-end">00:00</span>
+            </div>
+          </div>
+
+          <div class="border-t border-gray-700 pt-6">
+            <button id="trim-action-btn"
+              class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg transition-all hover:scale-[1.01] active:scale-[0.99]">
+              Trim Video Now
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- View: Converter -->
+    <section id="view-converter"
+      class="view-section hidden h-full w-full overflow-y-auto p-4 lg:p-8 flex flex-col items-center">
+      <div class="mb-4 lg:mb-8 space-y-2 text-center flex-none">
+        <h1 class="text-2xl lg:text-3xl font-bold text-white">Format Converter</h1>
+        <p class="text-sm lg:text-base text-gray-400">Convert videos between any modern format</p>
+      </div>
+
+      <!-- Converter Dropzone -->
+      <div id="converter-dropzone"
+        class="w-full max-w-2xl border-2 border-dashed border-gray-700 rounded-2xl p-8 lg:p-10 transition-all duration-300 hover:border-purple-500 hover:bg-gray-800/50 cursor-pointer group relative flex-none">
+        <input type="file" id="converter-file-input" class="hidden" accept="video/*" />
+
+        <div id="converter-upload-content" class="flex flex-col items-center space-y-4 pointer-events-none">
+          <div class="p-4 bg-gray-800 rounded-full group-hover:bg-purple-500/20 transition-colors">
+            <svg class="w-10 h-10 text-gray-500 group-hover:text-purple-400" fill="none" stroke="currentColor"
+              viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+            </svg>
+          </div>
+          <button id="converter-select-btn"
+            class="pointer-events-auto px-6 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-white font-medium transition-colors shadow-lg border border-gray-700">
+            Select Source File
+          </button>
+          <div class="text-sm text-gray-500 text-center">
+            Supports all major formats (MKV, WEBM, GIF, etc)
+          </div>
+        </div>
+
+        <!-- File Loaded State (Hidden initially) -->
+        <div id="converter-file-info" class="hidden flex-col items-center space-y-4">
+          <svg class="w-12 h-12 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+            </path>
+          </svg>
+          <div class="text-left w-full bg-gray-800 p-4 rounded-lg border border-gray-700">
+            <p id="converter-filename" class="font-mono text-sm text-purple-300 truncate">video.mkv</p>
+          </div>
+          <button id="converter-change-btn" class="text-sm text-gray-400 hover:text-white underline">Change
+            file</button>
+        </div>
+      </div>
+
+      <!-- Conversion Options -->
+      <div id="converter-controls" class="w-full max-w-2xl mt-6 opacity-50 pointer-events-none flex-none">
+        <label class="block text-gray-400 text-sm mb-2 font-medium">Target Format</label>
+        <div class="relative">
+          <select id="convert-format-select"
+            class="w-full bg-gray-800 border border-gray-700 text-white py-3 px-4 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500">
+            <!-- Populated via JS -->
+          </select>
+          <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
+            <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+              <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+            </svg>
+          </div>
+        </div>
+
+        <button id="convert-action-btn"
+          class="w-full mt-8 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-4 px-6 rounded-xl shadow-lg transform transition-all hover:scale-[1.02] active:scale-[0.98]">
+          Start Conversion
+        </button>
+      </div>
+
+    </section>
+
+    <!-- View: Settings -->
+    <section id="view-settings"
+      class="view-section hidden h-full w-full overflow-y-auto p-4 lg:p-8 flex flex-col items-center">
+      <div class="mb-8 space-y-2 text-center flex-none">
+        <h1 class="text-3xl font-bold text-white">Settings</h1>
+        <p class="text-gray-400">Customize your experience</p>
+      </div>
+
+      <div class="w-full max-w-2xl space-y-6 flex-none">
+
+        <!-- Logic Defaults -->
+        <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700">
+          <h3 class="text-xl font-bold text-white mb-4">Defaults</h3>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Opt Quality -->
+            <div>
+              <label class="block text-gray-400 text-sm mb-2">Default Optimization</label>
+              <select id="setting-default-quality"
+                class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 outline-none">
+                <option value="high">High Quality (Larger)</option>
+                <option value="medium" selected>Balanced</option>
+                <option value="low">Max Compression (Low)</option>
+              </select>
+            </div>
+
+            <!-- Convert Format -->
+            <div>
+              <label class="block text-gray-400 text-sm mb-2">Default Target Format</label>
+              <select id="setting-default-format"
+                class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 outline-none">
+                <!-- Populated by JS same as Converter? Or hardcode common -->
+                <option value="mp4" selected>MP4</option>
+                <option value="mkv">MKV</option>
+                <option value="gif">GIF</option>
+                <option value="webm">WebM</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Appearance -->
+        <div class="bg-theme-secondary p-6 rounded-2xl border border-theme">
+          <h3 class="text-xl font-bold text-theme-primary mb-4">Appearance</h3>
+
+          <div class="space-y-4">
+            <label class="block text-theme-secondary text-sm font-medium">Theme Selection</label>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <button
+                class="theme-btn p-3 rounded-lg border border-gray-600 bg-[#111827] !text-white hover:ring-2 ring-purple-500 transition-all text-xs font-bold shadow-lg"
+                data-theme="">
+                Cosmic
+              </button>
+              <button
+                class="theme-btn p-3 rounded-lg border border-gray-300 bg-[#f9fafb] text-gray-900 hover:ring-2 ring-purple-500 transition-all text-xs font-bold shadow-lg"
+                data-theme="theme-light">
+                Light
+              </button>
+              <button
+                class="theme-btn p-3 rounded-lg border border-blue-900 bg-gradient-to-br from-[#0f172a] to-[#312e81] !text-white hover:ring-2 ring-blue-500 transition-all text-xs font-bold shadow-lg"
+                data-theme="theme-midnight">
+                Midnight
+              </button>
+              <button
+                class="theme-btn p-3 rounded-lg border border-orange-900 bg-gradient-to-br from-[#2a0a1a] to-[#4a044e] !text-white hover:ring-2 ring-pink-500 transition-all text-xs font-bold shadow-lg"
+                data-theme="theme-sunset">
+                Sunset
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- About -->
+        <div class="text-center pt-8 border-t border-theme">
+          <p class="text-theme-secondary text-sm">Video Tools v1.0.0</p>
+          <p class="text-theme-secondary text-xs mt-1">Created by <span class="text-theme-primary font-bold">Sina
+              Kop</span></p>
+          <p class="text-theme-secondary text-[10px] mt-1 opacity-70">Powered by Tauri v2 & FFmpeg</p>
+        </div>
+
+      </div>
+    </section>
 
     <!-- Progress Overlay -->
     <div id="progress-overlay"
-      class="absolute inset-0 bg-gray-900/90 backdrop-blur-sm z-50 hidden flex-col items-center justify-center">
+      class="absolute inset-0 bg-gray-900/95 backdrop-blur-md z-50 hidden flex-col items-center justify-center">
       <div class="w-64 space-y-4">
         <div class="flex justify-between text-sm">
           <span class="text-purple-400 animate-pulse">Processing...</span>
@@ -106,7 +570,10 @@
       </div>
     </div>
 
-  </div>
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-[60] flex flex-col space-y-3 pointer-events-none"></div>
+
+  </main>
   <script type="module" src="/src/main.js"></script>
 </body>
 

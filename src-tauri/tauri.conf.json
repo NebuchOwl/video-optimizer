@@ -13,14 +13,16 @@
     "windows": [
       {
         "title": "Video Optimizer",
-        "width": 800,
-        "height": 600,
+        "width": 1000,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 700,
         "resizable": true,
         "fullscreen": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' asset: https://asset.localhost blob: data:; media-src 'self' asset: https://asset.localhost blob: data:; connect-src 'self' ipc: https://ipc.localhost asset: https://asset.localhost;"
     }
   },
   "bundle": {
