@@ -1,8 +1,8 @@
 import './style.css';
 import { Command } from '@tauri-apps/plugin-shell';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { writeTextFile } from '@tauri-apps/plugin-fs';
-import { tempDir, join } from '@tauri-apps/api/path';
+import { writeTextFile, readFile } from '@tauri-apps/plugin-fs';
+import { tempDir, appCacheDir, join } from '@tauri-apps/api/path';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 
 const SUPPORTED_EXTENSIONS = [
@@ -220,6 +220,65 @@ const advResW = document.getElementById('adv-res-w');
 const advResH = document.getElementById('adv-res-h');
 const advFps = document.getElementById('adv-fps');
 const advFpsCustom = document.getElementById('adv-fps-custom');
+const advBackend = document.getElementById('adv-backend');
+
+// --- Dynamic Codec Logic ---
+const codecsByBackend = {
+  cpu: [
+    { val: 'libx264', label: 'H.264 (Standard)' },
+    { val: 'libx265', label: 'H.265 (HEVC)' },
+    { val: 'libaom-av1', label: 'AV1 (Next Gen)' },
+    { val: 'libvpx-vp9', label: 'VP9 (Web)' },
+    { val: 'prores_ks', label: 'ProRes (Editing)' },
+    { val: 'copy', label: 'Copy (No Re-encode)' }
+  ],
+  'cpu-low': [
+    { val: 'libx264', label: 'H.264 (Standard)' },
+    { val: 'libx265', label: 'H.265 (HEVC)' },
+    { val: 'libaom-av1', label: 'AV1 (Next Gen)' },
+    { val: 'libvpx-vp9', label: 'VP9 (Web)' },
+    { val: 'prores_ks', label: 'ProRes (Editing)' },
+    { val: 'copy', label: 'Copy (No Re-encode)' }
+  ],
+  nvidia: [
+    { val: 'h264_nvenc', label: 'H.264 (NVIDIA GPU)' },
+    { val: 'hevc_nvenc', label: 'H.265 (NVIDIA GPU)' },
+    { val: 'av1_nvenc', label: 'AV1 (NVIDIA RTX 40+)' },
+    { val: 'copy', label: 'Copy (No Re-encode)' }
+  ],
+  amd: [
+    { val: 'h264_amf', label: 'H.264 (AMD GPU)' },
+    { val: 'hevc_amf', label: 'H.265 (AMD GPU)' },
+    { val: 'av1_amf', label: 'AV1 (AMD RDNA3+)' },
+    { val: 'copy', label: 'Copy (No Re-encode)' }
+  ],
+  intel: [
+    { val: 'h264_qsv', label: 'H.264 (Intel GPU)' },
+    { val: 'hevc_qsv', label: 'H.265 (Intel GPU)' },
+    { val: 'vp9_qsv', label: 'VP9 (Intel GPU)' },
+    { val: 'av1_qsv', label: 'AV1 (Intel Arc)' },
+    { val: 'copy', label: 'Copy (No Re-encode)' }
+  ]
+};
+
+function updateAdvCodecs() {
+  if (!advBackend || !advCodec) return;
+  const backend = advBackend.value;
+  const options = codecsByBackend[backend] || codecsByBackend.cpu;
+  advCodec.innerHTML = '';
+  options.forEach(opt => {
+    const el = document.createElement('option');
+    el.value = opt.val;
+    el.textContent = opt.label;
+    advCodec.appendChild(el);
+  });
+}
+
+if (advBackend) {
+  advBackend.addEventListener('change', updateAdvCodecs);
+  // Init on load
+  updateAdvCodecs();
+}
 
 let isAdvancedMode = false;
 
@@ -441,11 +500,50 @@ optimizeBtn.addEventListener('click', async () => {
       const codec = advCodec.value;
       if (codec !== 'copy') {
         ffmpegArgs.push('-c:v', codec);
-        ffmpegArgs.push('-crf', advCrf.value);
-        ffmpegArgs.push('-preset', advPreset.value);
+
+        // Hardware specific flags
+        if (codec.includes('nvenc')) {
+          // NVIDIA: Use -cq (Constant Quality) and -preset p1-p7
+          ffmpegArgs.push('-cq', advCrf.value);
+          let pVal = 'p4'; // Default Medium
+          if (advPreset.value.includes('fast')) pVal = 'p2'; // Faster
+          if (advPreset.value.includes('slow')) pVal = 'p6'; // Better quality
+          ffmpegArgs.push('-preset', pVal);
+        } else if (codec.includes('amf')) {
+          // AMD: Use -qp (Quantization Parameter)
+          ffmpegArgs.push('-rc', 'vbr');
+          ffmpegArgs.push('-qp-i', advCrf.value);
+          ffmpegArgs.push('-qp-p', advCrf.value);
+          let qVal = 'balanced';
+          if (advPreset.value.includes('fast')) qVal = 'speed';
+          if (advPreset.value.includes('slow')) qVal = 'quality';
+          ffmpegArgs.push('-quality', qVal);
+        } else if (codec.includes('qsv')) {
+          // Intel: Use -global_quality
+          ffmpegArgs.push('-global_quality', advCrf.value);
+          // QSV presets map roughly to cpu presets
+          ffmpegArgs.push('-preset', advPreset.value);
+        } else if (codec === 'prores_ks') {
+          // ProRes: Profile 3 (HQ), ignore CRF
+          ffmpegArgs.push('-profile:v', '3');
+          ffmpegArgs.push('-pix_fmt', 'yuv422p10le');
+        } else {
+          // CPU (x264, x265, etc)
+          ffmpegArgs.push('-crf', advCrf.value);
+          if (advBackend.value === 'cpu-low') {
+            ffmpegArgs.push('-threads', '2');
+          }
+          if (!codec.includes('libvpx')) {
+            ffmpegArgs.push('-preset', advPreset.value);
+          } else {
+            // VP9 uses -cpu-used 0-5
+            ffmpegArgs.push('-b:v', '0');
+          }
+        }
       } else {
         ffmpegArgs.push('-c:v', 'copy');
       }
+
       // Resolution
       if (advResolution.value === 'custom') {
         const w = advResW.value || -1;
@@ -734,53 +832,27 @@ document.addEventListener('mouseup', () => {
 });
 
 // Video Metadata Loaded (Duration)
-trimVideoPreview.onloadedmetadata = () => {
-  trimState.duration = trimVideoPreview.duration || 0;
+// Video Metadata Loaded (Duration)
+trimVideoPreview.addEventListener('loadedmetadata', () => {
+  const dur = trimVideoPreview.duration || 0;
+  trimState.duration = dur;
 
   // Default: Trim first 10s or full if short
   trimState.start = 0;
-  trimState.end = Math.min(trimState.duration, 10);
-  if (trimState.end <= 0) trimState.end = trimState.duration;
+  trimState.end = Math.min(dur, 10);
+  if (trimState.end <= 0) trimState.end = dur;
 
   // Update Totals
   dispTotalStart.textContent = "00:00:00";
-  dispTotalEnd.textContent = formatTime(trimState.duration);
+  dispTotalEnd.textContent = formatTime(dur);
 
   updateTimelineUI();
 
   // Generate Filmstrip
-  if (trimFilePath) generateFilmstrip(trimFilePath, trimState.duration);
-};
+  // Filmstrip generation disabled by user request
+});
 
-async function generateFilmstrip(filePath, duration) {
-  if (!filePath || !duration) return;
-  try {
-    const tempPath = await join(await tempDir(), `filmstrip_${Date.now()}.jpg`);
-    // 10 frames spread over duration. fps = 10/duration.
-    const fps = 10 / duration;
 
-    // Command: ffmpeg -i input -vf "fps=...,scale=120:-1,tile=10x1" -frames:v 1 out.jpg
-    const args = [
-      '-ss', '0', '-i', filePath,
-      '-vf', `fps=${fps},scale=128:-1,tile=10x1`,
-      '-frames:v', '1',
-      '-y', tempPath
-    ];
-
-    const cmd = Command.sidecar('ffmpeg', args);
-    const res = await cmd.execute();
-
-    if (res.code === 0) {
-      const url = convertFileSrc(tempPath);
-      if (timelineTrack) {
-        timelineTrack.style.backgroundImage = `url('${url}')`;
-        timelineTrack.style.backgroundSize = '100% 100%';
-        timelineTrack.style.backgroundRepeat = 'no-repeat';
-        timelineTrack.style.backgroundColor = '#111827'; // ensure dark bg behind
-      }
-    }
-  } catch (e) { console.error("Filmstrip error", e); }
-}
 
 async function loadTrimVideo() {
   try {

@@ -51,6 +51,15 @@
       "identifier": "fs:allow-read",
       "allow": [
         {
+          "path": "$TEMP/**"
+        },
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "$APPCACHE/**"
+        },
+        {
           "path": "**"
         }
       ]

@@ -7,11 +7,11 @@ A powerful, high-performance video toolkit built with **Tauri v2**, **Rust**, an
 *   **Video Optimizer**:
     *   **Batch Processing**: Queue multiple files for optimization.
     *   **Smart Compression**: Reduce file size while maintaining quality (H.264, H.265, ProRes).
-    *   **Hardware Acceleration**: Support for NVIDIA (NVENC), AMD (AMF), and Intel (QSV).
-    *   **Advanced Control**: Customize Resolution, FPS, Bitrate/CRF, and Audio tracks.
+    *   **Hardware Selection**: Dedicated backend selector for Software (CPU), NVIDIA (NVENC/AV1), AMD (AMF), and Intel (QSV/VP9).
+    *   **Advanced Codecs**: Support for H.264, H.265 (HEVC), AV1, VP9, and ProRes (CPU only).
+    *   **Low Power Mode**: 'Standard' vs 'Low Usage' CPU profiles.
 *   **Precision Trimmer**:
     *   **Lossless Trimming**: Cut video segments instantly without re-encoding.
-    *   **Visual Filmstrip**: Auto-generated thumbnails along the timeline for precise seeking.
     *   **Local Streaming**: Integrated Rust server (Axum) for smooth playback of large files.
 *   **Universal Converter**:
     *   Convert between all major formats: MP4, MKV, MOV, WEBM, AVI, GIF.

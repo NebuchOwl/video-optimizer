@@ -198,17 +198,25 @@
           <!-- Settings Grid -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Codec -->
+            <!-- Processing Unit -->
+            <div class="col-span-1 md:col-span-2">
+              <label class="block text-gray-400 text-xs uppercase font-bold mb-2">Processing Unit</label>
+              <select id="adv-backend"
+                class="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 text-white">
+                <option value="cpu" selected>Software (Standard) - High CPU</option>
+                <option value="cpu-low">Software (Low Usage) - Slower</option>
+                <option value="nvidia">NVIDIA GPU (NVENC)</option>
+                <option value="amd">AMD GPU (AMF)</option>
+                <option value="intel">Intel GPU (QSV)</option>
+              </select>
+            </div>
+
+            <!-- Codec -->
             <div>
-              <label class="block text-gray-400 text-xs uppercase font-bold mb-2">Video Codec</label>
+              <label class="block text-gray-400 text-xs uppercase font-bold mb-2">Codec</label>
               <select id="adv-codec"
                 class="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500">
-                <option value="libx264" selected>H.264 (Standard)</option>
-                <option value="libx265">H.265 (HEVC)</option>
-                <option value="libaom-av1">AV1 (Next Gen)</option>
-                <option value="libvpx-vp9">VP9 (Web)</option>
-                <option value="libvpx">VP8 (Legacy)</option>
-                <option value="prores_ks">ProRes (Editing)</option>
-                <option value="copy">Copy (No Re-encode)</option>
+                <!-- Populated via JS -->
               </select>
             </div>
             <!-- Preset -->
@@ -424,7 +432,7 @@
 
           <div class="border-t border-gray-700 pt-6">
             <button id="trim-action-btn"
-              class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg transition-all hover:scale-[1.01] active:scale-[0.99]">
+              class="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-4 rounded-xl shadow-lg transition-all hover:scale-[1.01] active:scale-[0.99]">
               Trim Video Now
             </button>
           </div>
