@@ -29,14 +29,6 @@
         }
       ]
     },
-    {
-      "identifier": "shell:allow-open",
-      "allow": [
-        {
-          "href": "^.*$"
-        }
-      ]
-    },
     "dialog:default",
     "fs:default",
     {

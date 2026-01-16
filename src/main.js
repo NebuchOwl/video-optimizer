@@ -5,6 +5,7 @@ import { writeTextFile, readFile } from '@tauri-apps/plugin-fs';
 import { tempDir, appCacheDir, join } from '@tauri-apps/api/path';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 
+
 const SUPPORTED_EXTENSIONS = [
   'mp4', 'mkv', 'mov', 'avi', 'webm', 'flv', 'wmv', 'mpeg', 'mpg', 'm4v',
   '3gp', '3g2', 'gif', 'apng', 'webp', 'avif',
@@ -15,6 +16,14 @@ const SUPPORTED_EXTENSIONS = [
 
 // --- Toast Notification System ---
 const toastContainer = document.getElementById('toast-container');
+
+// Global Settings Init (Hoisted to top)
+let appSettings = {
+  theme: 'theme-cosmic',
+  notifications: true,
+  outputDir: null
+};
+
 
 window.showToast = function (message, type = 'info') {
   // Ensure container exists if called early
@@ -75,13 +84,10 @@ const filesizeEl = document.getElementById('filesize');
 const changeFileBtn = document.getElementById('change-file-btn');
 const optionsPanel = document.getElementById('options-panel');
 const optimizeBtn = document.getElementById('optimize-btn');
-const progressOverlay = document.getElementById('progress-overlay');
-const progressText = document.getElementById('progress-text');
-const progressBar = document.getElementById('progress-bar');
-const cancelBtn = document.getElementById('cancel-btn');
 
 let selectedFiles = [];
-let currentChildProcess = null;
+let currentChildProcess = null; // Still useful for tracking if we want to kill globally?
+// But processManager handles it now. I'll leave it as null.
 
 // Drag and Drop Logic
 dropzone.addEventListener('dragover', (e) => {
@@ -282,6 +288,426 @@ if (advBackend) {
 
 let isAdvancedMode = false;
 
+// --- Logger System ---
+const Logger = {
+  logs: [],
+  MAX_LOGS: 50, // Keep last 50 logs
+
+  init() {
+    const saved = localStorage.getItem('appLogs');
+    if (saved) {
+      try {
+        this.logs = JSON.parse(saved);
+      } catch (e) { console.error("Log parse error", e); }
+    }
+  },
+
+  log(details) {
+    const entry = {
+      id: Date.now().toString(36),
+      timestamp: new Date().toISOString(),
+      ...details
+    };
+
+    this.logs.unshift(entry); // Add to top
+    if (this.logs.length > this.MAX_LOGS) this.logs.pop(); // Cap size
+
+    this.save();
+    this.render();
+  },
+
+  save() {
+    localStorage.setItem('appLogs', JSON.stringify(this.logs));
+  },
+
+  clear() {
+    this.logs = [];
+    this.save();
+    this.render();
+  },
+
+  render() {
+    const container = document.getElementById('logs-container');
+    if (!container) return; // Might be hidden/not ready
+
+    if (this.logs.length === 0) {
+      container.innerHTML = '<div class="text-gray-600 italic">No logs recorded yet...</div>';
+      return;
+    }
+
+    container.innerHTML = this.logs.map(log => {
+      let colorClass = 'text-gray-300';
+      if (log.type === 'error') colorClass = 'text-red-400 font-bold';
+      if (log.type === 'success') colorClass = 'text-green-400';
+      if (log.type === 'info') colorClass = 'text-blue-300';
+
+      return `<div class="border-b border-gray-800 pb-1 mb-1 font-mono text-xs break-all">
+         <span class="text-gray-600">[${new Date(log.timestamp).toLocaleTimeString()}]</span>
+         <span class="${colorClass}">${log.message}</span>
+         ${log.details ? `<div class="text-gray-500 pl-4 mt-1 bg-black/20 p-1 rounded">${log.details}</div>` : ''}
+      </div>`;
+    }).join('');
+  }
+};
+
+// --- Process Manager (Queue) ---
+const processManager = {
+  queue: [],
+  history: [],
+  isProcessing: false,
+  viewMode: 'active', // 'active' | 'history'
+
+  init() {
+    this.load();
+    Logger.init();
+  },
+
+  setView(mode) {
+    this.viewMode = mode;
+    this.updateUI();
+
+    const btnActive = document.getElementById('queue-view-active');
+    const btnHistory = document.getElementById('queue-view-history');
+
+    if (mode === 'active') {
+      if (btnActive) { btnActive.classList.remove('bg-gray-700', 'text-gray-400'); btnActive.classList.add('bg-purple-600', 'text-white'); }
+      if (btnHistory) { btnHistory.classList.remove('bg-purple-600', 'text-white'); btnHistory.classList.add('bg-gray-700', 'text-gray-400'); }
+    } else {
+      if (btnHistory) { btnHistory.classList.remove('bg-gray-700', 'text-gray-400'); btnHistory.classList.add('bg-purple-600', 'text-white'); }
+      if (btnActive) { btnActive.classList.remove('bg-purple-600', 'text-white'); btnActive.classList.add('bg-gray-700', 'text-gray-400'); }
+    }
+  },
+
+  viewLogs(id) {
+    const job = this.queue.find(j => j.id === id) || this.history.find(j => j.id === id);
+    if (!job) return;
+
+    const modal = document.getElementById('modal-logs');
+    const modalId = document.getElementById('modal-logs-id');
+    const modalTitle = document.getElementById('modal-logs-title');
+    const modalContent = document.getElementById('modal-logs-content');
+
+    if (modal && modalContent) {
+      modalId.textContent = `ID: ${job.id.substr(0, 8)}`;
+      modalTitle.textContent = `${job.name} Logs`;
+      modalContent.textContent = (job.logs && job.logs.length > 0) ? job.logs.join('\n') : "No detailed logs available.";
+      modal.classList.remove('hidden');
+      // Auto scroll to bottom
+      modalContent.scrollTop = modalContent.scrollHeight;
+    }
+    this.currentLogJobId = id;
+  },
+
+  copyLogs() {
+    const modalContent = document.getElementById('modal-logs-content');
+    if (modalContent) {
+      navigator.clipboard.writeText(modalContent.textContent).then(() => {
+        showToast('Logs copied to clipboard', 'success');
+      });
+    }
+  },
+
+
+
+  save() {
+    const cleanQueue = this.queue.map(j => {
+      // eslint-disable-next-line no-unused-vars
+      const { child, ...rest } = j;
+      return rest;
+    });
+    localStorage.setItem('processQueue', JSON.stringify(cleanQueue));
+    localStorage.setItem('processHistory', JSON.stringify(this.history));
+  },
+
+  load() {
+    const data = localStorage.getItem('processQueue');
+    const hist = localStorage.getItem('processHistory');
+    if (hist) {
+      try { this.history = JSON.parse(hist); } catch (e) { console.error(e); }
+    }
+    if (data) {
+      try {
+        this.queue = JSON.parse(data).map(j => {
+          if (j.status === 'processing' || j.status === 'pending') {
+            j.status = 'failed';
+            j.info = 'Interrupted (Restarted)';
+          }
+          return j;
+        });
+        this.updateUI();
+      } catch (e) {
+        console.error("Failed to load queue", e);
+      }
+    }
+  },
+
+  addJob(jobConfig) {
+    const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
+    const job = {
+      id,
+      status: 'pending',
+      progress: 0,
+      info: 'Waiting...',
+      logs: [],
+      ...jobConfig
+    };
+    this.queue.push(job);
+    this.save();
+    this.updateUI();
+    this.processNext();
+    showToast(`Queued: ${job.name}`, 'info');
+    Logger.log({ type: 'info', message: `Job Queued: ${job.name} (${job.type})` });
+  },
+
+  retryJob(id) {
+    const job = this.queue.find(j => j.id === id);
+    if (!job) return;
+
+    // Clone job but reset status/id
+    const newJob = {
+      ...job,
+      id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+      status: 'pending',
+      progress: 0,
+      info: 'Queued (Retry)',
+      logs: [],
+      child: undefined
+    };
+
+    this.queue.push(newJob);
+    this.save();
+    this.updateUI();
+    this.processNext();
+    showToast(`Retrying: ${job.name}`, 'info');
+    Logger.log({ type: 'info', message: `Job Retried: ${job.name}` });
+  },
+
+  clearCompleted() {
+    const activeStatues = ['pending', 'processing'];
+    const completed = this.queue.filter(j => !activeStatues.includes(j.status));
+
+    // Move to history
+    completed.forEach(j => {
+      j.completedAt = new Date().toISOString();
+      this.history.unshift(j);
+    });
+
+    // Cap history size
+    if (this.history.length > 50) this.history = this.history.slice(0, 50);
+
+    this.queue = this.queue.filter(j => activeStatues.includes(j.status));
+    this.save();
+    this.updateUI();
+    showToast(`${completed.length} tasks moved to History`, 'info');
+  },
+
+  cancelJob(id) {
+    const job = this.queue.find(j => j.id === id);
+    if (!job) return;
+
+    if (job.status === 'processing' && job.child) {
+      job.status = 'cancelled';
+      job.info = 'Cancelled';
+      job.child.kill().catch(e => console.error(e));
+      this.isProcessing = false;
+      this.save();
+      this.updateUI();
+      document.dispatchEvent(new Event('queue-updated')); // Signal
+      Logger.log({ type: 'error', message: `Job Cancelled: ${job.name}`, details: 'User terminated process.' });
+      this.processNext();
+    } else {
+      // If it was already done/failed, move to history instead of just deleting?
+      if (['done', 'failed', 'cancelled'].includes(job.status)) {
+        job.completedAt = new Date().toISOString();
+        this.history.unshift(job);
+        if (this.history.length > 50) this.history = this.history.slice(0, 50);
+        this.save(); // Save history
+      }
+
+      this.queue = this.queue.filter(j => j.id !== id);
+      this.save();
+      this.updateUI();
+      Logger.log({ type: 'info', message: `Job Removed/Archived: ${job.name}` });
+    }
+  },
+
+  async processNext() {
+    if (this.isProcessing) return;
+    const job = this.queue.find(j => j.status === 'pending');
+    if (!job) return;
+
+    this.isProcessing = true;
+    job.status = 'processing';
+    job.info = 'Starting...';
+    this.save();
+    this.updateUI();
+
+    try {
+      const cmd = Command.sidecar(job.command, job.args);
+
+      cmd.on('close', data => {
+        if (job.status === 'cancelled') return;
+        if (data.code === 0) {
+          job.status = 'done';
+          job.progress = 100;
+          job.info = 'Complete';
+          showToast(`Finished: ${job.name}`, 'success');
+          Logger.log({ type: 'success', message: `Job Finished: ${job.name}` });
+        } else {
+          job.status = 'failed';
+          job.info = `Exit Code: ${data.code}`;
+          showToast(`Failed: ${job.name}`, 'error');
+          Logger.log({ type: 'error', message: `Job Failed: ${job.name}`, details: `Exit Code: ${data.code}` });
+        }
+        this.isProcessing = false;
+        this.save();
+        this.updateUI();
+        this.processNext();
+      });
+
+      cmd.on('error', err => {
+        if (job.status === 'cancelled') return;
+        job.status = 'failed';
+        job.info = 'Error';
+        this.isProcessing = false;
+        this.save();
+        this.updateUI();
+        this.processNext();
+        Logger.log({ type: 'error', message: `Execution Error: ${job.name}`, details: JSON.stringify(err) });
+      });
+
+      cmd.stderr.on('data', line => {
+        if (job.status === 'cancelled') return;
+        job.logs.push(line);
+        if (job.logs.length > 2000) job.logs.shift(); // Cap logs
+
+        if (job.duration) {
+          const timeMatch = line.match(/time=(\d{2}:\d{2}:\d{2}\.\d{2})/);
+          if (timeMatch) {
+            const time = parseTimeHelper(timeMatch[1]);
+            const pct = Math.min(100, (time / job.duration) * 100);
+            job.progress = pct;
+            job.info = `${Math.round(pct)}%`;
+            this.updateUI();
+            // Don't save on every tick (perf)
+          }
+        }
+        if (!job.duration) {
+          const durMatch = line.match(/Duration: (\d{2}:\d{2}:\d{2}\.\d+)/);
+          if (durMatch) {
+            job.duration = parseTimeHelper(durMatch[1]);
+            this.save(); // Save duration once found
+          }
+        }
+      });
+
+      const child = await cmd.spawn();
+      job.child = child;
+
+    } catch (e) {
+      job.status = 'failed';
+      job.info = 'Exception';
+      this.isProcessing = false;
+      this.save();
+      this.updateUI();
+      this.processNext();
+      Logger.log({ type: 'error', message: `Process Exception: ${job.name}`, details: e.toString() });
+    }
+  },
+
+  updateUI() {
+    const container = document.getElementById('queue-list');
+    const clearBtn = document.getElementById('queue-clear-btn');
+    if (!container) return;
+
+    if (this.viewMode === 'history') {
+      // History View
+      if (clearBtn) clearBtn.classList.add('hidden'); // Hide clear btn in history for now or change interaction
+
+      if (this.history.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-500 py-10">No history available</div>';
+        return;
+      }
+
+      container.innerHTML = this.history.map(job => `
+        <div class="queue-item opacity-75">
+          <div class="flex justify-between items-center">
+            <div>
+              <div class="font-bold text-gray-300">${job.name}</div>
+              <div class="text-xs text-gray-500 uppercase">${job.type} • ${new Date(job.completedAt || Date.now()).toLocaleString()}</div>
+            </div>
+            <div class="status-badge ${this.getStatusClass(job.status)}">${job.status}</div>
+          </div>
+          <div class="flex justify-between items-center mt-1">
+             <div class="text-xs text-gray-500">${job.info || 'Archived'}</div>
+             <button onclick="window.processManager.viewLogs('${job.id}')" class="text-xs text-purple-400 hover:text-purple-300 underline">View Logs</button>
+          </div>
+        </div>
+      `).join('');
+      return;
+    }
+
+    // Active View
+    const hasCompleted = this.queue.some(j => ['done', 'failed', 'cancelled'].includes(j.status));
+    if (clearBtn) {
+      if (hasCompleted) clearBtn.classList.remove('hidden');
+      else clearBtn.classList.add('hidden');
+    }
+
+    if (this.queue.length === 0) {
+      container.innerHTML = '<div class="text-center text-gray-500 py-10">No active tasks</div>';
+      return;
+    }
+
+    container.innerHTML = this.queue.map((job, index) => {
+      return `
+      <div class="queue-item" id="job-${job.id}" data-index="${index}">
+        <div class="flex justify-between items-center">
+          <div>
+            <div class="font-bold text-white">${job.name}</div>
+            <div class="text-xs text-gray-400 uppercase">${job.type}</div>
+          </div>
+          <div class="flex items-center gap-3">
+             <div class="status-badge ${this.getStatusClass(job.status)}">${job.status}</div>
+             
+             ${(job.status === 'failed' || job.status === 'cancelled') ?
+          `<button class="text-gray-400 hover:text-purple-400 px-1 text-lg" onclick="window.processManager.retryJob('${job.id}')" title="Retry">⟳</button>` : ''}
+               
+             <button class="text-gray-400 hover:text-red-400 px-2 text-lg font-bold" onclick="window.processManager.cancelJob('${job.id}')" title="Remove/Cancel">×</button>
+          </div>
+        </div>
+        ${['processing', 'pending', 'cancelled', 'done'].includes(job.status) && job.progress > 0 ? `
+        <div class="queue-progress-bar mt-2">
+            <div class="queue-progress-fill" style="width: ${job.progress}%"></div>
+        </div>` : ''}
+        <div class="flex justify-between text-xs text-gray-500 mt-1">
+            <span>${job.info}</span>
+            <div class="flex gap-3">
+               <button onclick="window.processManager.viewLogs('${job.id}')" class="text-xs text-purple-400 hover:text-purple-300 underline">Logs</button>
+               ${job.progress > 0 ? `<span>${Math.round(job.progress)}%</span>` : ''}
+            </div>
+        </div>
+      </div>
+    `;
+    }).join('');
+  },
+
+  getStatusClass(status) {
+    if (status === 'processing') return 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
+    if (status === 'done') return 'bg-green-500/20 text-green-400 border border-green-500/30';
+    if (status === 'failed') return 'bg-red-500/20 text-red-400 border border-red-500/30';
+    if (status === 'cancelled') return 'bg-gray-500/20 text-gray-400 border border-gray-500/30';
+    return 'bg-gray-700 text-gray-400 border border-gray-600';
+  }
+};
+
+window.processManager = processManager;
+
+function parseTimeHelper(timeStr) {
+  const [h, m, s] = timeStr.split(':');
+  return (parseFloat(h) * 3600) + (parseFloat(m) * 60) + parseFloat(s);
+}
+
 if (modeSimpleBtn && modeAdvancedBtn) {
   modeSimpleBtn.addEventListener('click', () => setOptimizerMode(false));
   modeAdvancedBtn.addEventListener('click', () => setOptimizerMode(true));
@@ -368,317 +794,163 @@ if (defaultBtn) {
 
 
 
-
-/* --- Batch UI Helpers --- */
-function initBatchUI(files) {
-  const list = document.getElementById('progress-list');
-  const statusEl = document.getElementById('batch-status-text');
-  if (list) {
-    list.innerHTML = '';
-    files.forEach((f, i) => {
-      const name = typeof f === 'object' ? f.input.split(/[\\/]/).pop() : f.split(/[\\/]/).pop();
-      const row = document.createElement('div');
-      row.id = `batch-item-${i}`;
-      row.className = 'flex items-center justify-between bg-gray-800 p-3 rounded-lg border border-gray-700';
-      row.innerHTML = `
-            <div class="flex items-center space-x-3 w-1/2 overflow-hidden">
-                <span class="text-gray-500 font-mono text-xs w-6 flex-none">${i + 1}.</span>
-                <span class="truncate text-sm text-gray-200" title="${name}">${name}</span>
-            </div>
-            <div class="flex items-center space-x-3 flex-1 justify-end">
-                <span id="batch-status-${i}" class="text-xs text-gray-500 font-mono hidden md:block">Pending</span>
-                <div class="w-16 md:w-24 h-2 bg-gray-700 rounded-full overflow-hidden flex-none">
-                    <div id="batch-bar-${i}" class="h-full bg-purple-500 w-0 transition-all duration-300"></div>
-                </div>
-                <span id="batch-percent-${i}" class="text-xs font-mono text-gray-400 w-10 text-right">0%</span>
-            </div>
-        `;
-      list.appendChild(row);
-    });
-  }
-  if (statusEl) statusEl.textContent = "Initializing...";
-}
-
-function updateBatchUI(i, percent, status) {
-  const bar = document.getElementById(`batch-bar-${i}`);
-  const txt = document.getElementById(`batch-percent-${i}`);
-  const stat = document.getElementById(`batch-status-${i}`);
-  const row = document.getElementById(`batch-item-${i}`);
-
-  if (bar) bar.style.width = `${percent}%`;
-  if (txt) txt.textContent = `${Math.round(percent)}%`;
-
-  if (status && stat) {
-    stat.textContent = status;
-    if (status === 'Done') {
-      stat.className = 'text-xs text-green-400 font-bold font-mono hidden md:block';
-      if (bar) bar.className = 'h-full bg-green-500 w-full transition-all duration-300';
-      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else if (status === 'Error') {
-      stat.className = 'text-xs text-red-400 font-bold font-mono hidden md:block';
-      if (bar) bar.className = 'h-full bg-red-500 w-full transition-all duration-300';
-    } else if (status === 'Processing') {
-      stat.className = 'text-xs text-purple-400 animate-pulse font-mono hidden md:block';
-      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  }
-}
-
+/* --- Optimizer Logic --- */
 optimizeBtn.addEventListener('click', async () => {
-  if (!selectedFiles || selectedFiles.length === 0) return;
+  if (!selectedFiles || selectedFiles.length === 0) return showToast('No files selected', 'error');
 
-  let fileQueue = [];
   const isBatch = selectedFiles.length > 1;
+  let outputDir = null;
 
-  // --- Determine Output Paths ---
-  let defaultExt = '.mp4';
-  if (isAdvancedMode && advCodec.value === 'prores_ks') defaultExt = '.mov';
-  else if (isAdvancedMode && advCodec.value === 'gif') defaultExt = '.gif';
-
-  if (!isBatch) {
-    // Single Mode
-    const selectedFilePath = selectedFiles[0];
-    const defaultPath = selectedFilePath.replace(/(\.[^.]+)$/, '_optimized' + defaultExt);
-
-    const outputPath = await save({
-      defaultPath: defaultPath,
-      filters: [{ name: 'Video', extensions: [defaultExt.substring(1)] }]
-    });
-    if (!outputPath) return;
-    fileQueue.push({ input: selectedFilePath, output: outputPath });
-  } else {
-    // Batch Mode
-    const dir = await open({
+  if (isBatch) {
+    outputDir = await open({
       directory: true,
       multiple: false,
       title: "Select Output Folder for Batch Processing"
     });
-    if (!dir) return;
-
-    selectedFiles.forEach(f => {
-      const name = f.replace(/^.*[\\\/]/, '');
-      const lastDot = name.lastIndexOf('.');
-      const base = lastDot > -1 ? name.substring(0, lastDot) : name;
-      // Use standard slash for consistency
-      fileQueue.push({ input: f, output: `${dir}/${base}_optimized${defaultExt}` });
-    });
+    if (!outputDir) return;
   }
 
-  // --- Execution Loop ---
-  progressOverlay.classList.remove('hidden');
-  progressOverlay.classList.add('flex');
-  optimizeBtn.disabled = true;
-  initBatchUI(fileQueue.map(q => q.input));
+  // Capture settings once
+  const baseArgs = getOptimizerArgs();
 
-  let successCount = 0;
-  let errorCount = 0;
-  let isCancelled = false;
+  // Determine extension
+  let defaultExt = '.mp4';
+  if (isAdvancedMode && advCodec && advCodec.value === 'prores_ks') defaultExt = '.mov';
+  else if (isAdvancedMode && advCodec && advCodec.value === 'gif') defaultExt = '.gif';
 
-  cancelBtn.onclick = () => {
-    isCancelled = true;
-    if (currentChildProcess) currentChildProcess.kill();
-    document.getElementById('batch-status-text').textContent = "Cancelled";
-    progressOverlay.classList.add('hidden');
-    progressOverlay.classList.remove('flex');
-    optimizeBtn.disabled = false;
-    showToast('Processing cancelled', 'info');
-  };
+  for (const input of selectedFiles) {
+    let output;
 
-  for (let i = 0; i < fileQueue.length; i++) {
-    if (isCancelled) break;
-    const { input, output } = fileQueue[i];
-    const pctPrefix = isBatch ? `File ${i + 1}/${fileQueue.length}: ` : '';
+    if (isBatch) {
+      const name = input.split(/[\\/]/).pop();
+      const lastDot = name.lastIndexOf('.');
+      const base = lastDot > -1 ? name.substring(0, lastDot) : name;
 
-    updateBatchUI(i, 0, 'Processing');
-    const statusText = document.getElementById('batch-status-text');
-    if (statusText) statusText.textContent = `Processing ${i + 1}/${fileQueue.length}...`;
-
-    const ffmpegArgs = ['-i', input];
-
-    // --- Advanced/Simple Logic ---
-    if (isAdvancedMode) {
-      const codec = advCodec.value;
-      if (codec !== 'copy') {
-        ffmpegArgs.push('-c:v', codec);
-
-        // Hardware specific flags
-        if (codec.includes('nvenc')) {
-          // NVIDIA: Use -cq (Constant Quality) and -preset p1-p7
-          ffmpegArgs.push('-cq', advCrf.value);
-          let pVal = 'p4'; // Default Medium
-          if (advPreset.value.includes('fast')) pVal = 'p2'; // Faster
-          if (advPreset.value.includes('slow')) pVal = 'p6'; // Better quality
-          ffmpegArgs.push('-preset', pVal);
-        } else if (codec.includes('amf')) {
-          // AMD: Use -qp (Quantization Parameter)
-          ffmpegArgs.push('-rc', 'vbr');
-          ffmpegArgs.push('-qp-i', advCrf.value);
-          ffmpegArgs.push('-qp-p', advCrf.value);
-          let qVal = 'balanced';
-          if (advPreset.value.includes('fast')) qVal = 'speed';
-          if (advPreset.value.includes('slow')) qVal = 'quality';
-          ffmpegArgs.push('-quality', qVal);
-        } else if (codec.includes('qsv')) {
-          // Intel: Use -global_quality
-          ffmpegArgs.push('-global_quality', advCrf.value);
-          // QSV presets map roughly to cpu presets
-          ffmpegArgs.push('-preset', advPreset.value);
-        } else if (codec === 'prores_ks') {
-          // ProRes: Profile 3 (HQ), ignore CRF
-          ffmpegArgs.push('-profile:v', '3');
-          ffmpegArgs.push('-pix_fmt', 'yuv422p10le');
-        } else {
-          // CPU (x264, x265, etc)
-          ffmpegArgs.push('-crf', advCrf.value);
-          if (advBackend.value === 'cpu-low') {
-            ffmpegArgs.push('-threads', '2');
-          }
-          if (!codec.includes('libvpx')) {
-            ffmpegArgs.push('-preset', advPreset.value);
-          } else {
-            // VP9 uses -cpu-used 0-5
-            ffmpegArgs.push('-b:v', '0');
-          }
-        }
+      if (outputDir) {
+        // Output dir explicitly selected in Batch Mode
+        output = await join(outputDir, `${base}_optimized${defaultExt}`);
+      } else if (appSettings.outputDir) {
+        // Default Settings Output Dir
+        output = await join(appSettings.outputDir, `${base}_optimized${defaultExt}`);
       } else {
-        ffmpegArgs.push('-c:v', 'copy');
-      }
-
-      // Resolution
-      if (advResolution.value === 'custom') {
-        const w = advResW.value || -1;
-        const h = advResH.value || -1;
-        if (w != -1 || h != -1) ffmpegArgs.push('-vf', `scale=${w}:${h}`);
-      } else if (advResolution.value !== 'original') {
-        ffmpegArgs.push('-vf', `scale=${advResolution.value}`);
-      }
-      // FPS
-      if (advFps.value === 'custom') {
-        if (advFpsCustom.value) ffmpegArgs.push('-r', advFpsCustom.value);
-      } else if (advFps.value !== 'original') {
-        ffmpegArgs.push('-r', advFps.value);
-      }
-      // Audio
-      if (advAudio.value === 'none') {
-        ffmpegArgs.push('-an');
-      } else if (advAudio.value !== 'copy') {
-        ffmpegArgs.push('-c:a', advAudio.value);
-      } else {
-        ffmpegArgs.push('-c:a', 'copy');
-      }
-      // Custom
-      if (advCustom.value.trim()) {
-        ffmpegArgs.push(...advCustom.value.trim().split(/\s+/));
+        // In-place fallback
+        output = input.replace(/(\.[^.]+)$/, '_optimized' + defaultExt);
       }
 
     } else {
-      // Simple Mode
-      let crf = '23';
-      if (currentQuality === 'medium') crf = '18';
-      if (currentQuality === 'high') crf = '28';
-      const encoderMode = document.getElementById('encoder-select').value;
-      switch (encoderMode) {
-        case 'gpu-nvidia': ffmpegArgs.push('-c:v', 'h264_nvenc', '-cq', crf, '-preset', 'p4'); break;
-        case 'gpu-amd': ffmpegArgs.push('-c:v', 'h264_amf', '-qp-i', crf, '-qp-p', crf); break;
-        case 'gpu-intel': ffmpegArgs.push('-c:v', 'h264_qsv', '-global_quality', crf); break;
-        case 'cpu-low': ffmpegArgs.push('-vcodec', 'libx264', '-crf', crf, '-preset', 'medium', '-threads', '2'); break;
-        default: ffmpegArgs.push('-vcodec', 'libx264', '-crf', crf, '-preset', 'fast'); break;
-      }
+      const defaultName = input.split(/[\\/]/).pop().replace(/(\.[^.]+)$/, '_optimized' + defaultExt);
+      const defaultPath = appSettings.outputDir ? await join(appSettings.outputDir, defaultName) : input.replace(/(\.[^.]+)$/, '_optimized' + defaultExt);
+
+      output = await save({
+        defaultPath: defaultPath,
+        filters: [{ name: 'Video', extensions: [defaultExt.substring(1)] }]
+      });
+      if (!output) continue;
     }
 
-    ffmpegArgs.push('-y', output);
+    const args = ['-i', input, ...baseArgs, '-y', output];
 
-    try {
-      const command = Command.sidecar('ffmpeg', ffmpegArgs);
-      console.log("Processing:", input, "to", output);
-
-      // Wait for start to bind handlers? No, bind before spawn.
-      let durationSec = 0;
-
-      command.stderr.on('data', line => {
-        // Duration Parse
-        const durMatch = line.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d+)/);
-        if (durMatch) {
-          durationSec = parseFloat(durMatch[1]) * 3600 + parseFloat(durMatch[2]) * 60 + parseFloat(durMatch[3]);
-        }
-        // Time Parse
-        if (durationSec > 0) {
-          const tMatch = line.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d+)/);
-          if (tMatch) {
-            const cur = parseFloat(tMatch[1]) * 3600 + parseFloat(tMatch[2]) * 60 + parseFloat(tMatch[3]);
-            const pct = Math.min(100, Math.round((cur / durationSec) * 100));
-            updateBatchUI(i, pct);
-          }
-        }
-      });
-
-      currentChildProcess = await command.spawn();
-
-      await new Promise((resolve) => {
-        command.on('close', data => {
-          if (data.code === 0) { successCount++; updateBatchUI(i, 100, 'Done'); }
-          else { errorCount++; updateBatchUI(i, 0, 'Error'); }
-          resolve();
-        });
-        command.on('error', err => {
-          console.error(err);
-          errorCount++;
-          updateBatchUI(i, 0, 'Error');
-          resolve();
-        });
-      });
-      currentChildProcess = null;
-
-    } catch (e) {
-      console.error(e);
-      showToast(`Error starting file ${i + 1}: ${e}`, 'error');
-      updateBatchUI(i, 0, 'Error');
-      errorCount++;
-    }
+    // Add to global process manager
+    processManager.addJob({
+      name: input.split(/[\\/]/).pop(),
+      type: 'Optimize',
+      command: 'ffmpeg',
+      args: args,
+      output: output
+    });
   }
 
-  // Done
-  if (!isCancelled) {
-    const statusText = document.getElementById('batch-status-text');
-    if (statusText) statusText.textContent = "Completed";
+  resetUI();
+  showToast(`${isBatch ? 'Files' : 'File'} added to Queue`, 'success');
+});
 
-    setTimeout(() => {
-      const btn = document.getElementById('cancel-btn');
-      if (btn) {
-        btn.textContent = "Close";
-        btn.onclick = () => {
-          progressOverlay.classList.add('hidden');
-          progressOverlay.classList.remove('flex');
-          optimizeBtn.disabled = false;
-          btn.textContent = "Cancel Processing";
-        };
-      }
+function getOptimizerArgs() {
+  const args = [];
+  if (isAdvancedMode) {
+    const codec = advCodec.value;
+    if (codec !== 'copy') {
+      args.push('-c:v', codec);
 
-      if (successCount > 0 && errorCount === 0) {
-        showToast(`Done! All ${successCount} files processed.`, 'success');
-        resetUI();
+      // Hardware specific flags
+      if (codec.includes('nvenc')) {
+        args.push('-cq', advCrf.value);
+        let pVal = 'p4'; // Default Medium
+        if (advPreset.value.includes('fast')) pVal = 'p2';
+        if (advPreset.value.includes('slow')) pVal = 'p6';
+        args.push('-preset', pVal);
+      } else if (codec.includes('amf')) {
+        args.push('-rc', 'vbr');
+        args.push('-qp-i', advCrf.value);
+        args.push('-qp-p', advCrf.value);
+        let qVal = 'balanced';
+        if (advPreset.value.includes('fast')) qVal = 'speed';
+        if (advPreset.value.includes('slow')) qVal = 'quality';
+        args.push('-quality', qVal);
+      } else if (codec.includes('qsv')) {
+        args.push('-global_quality', advCrf.value);
+        args.push('-preset', advPreset.value);
+      } else if (codec === 'prores_ks') {
+        args.push('-profile:v', '3');
+        args.push('-pix_fmt', 'yuv422p10le');
       } else {
-        showToast(`Finished: ${successCount} Success, ${errorCount} Failed.`, 'info');
+        // CPU
+        args.push('-crf', advCrf.value);
+        if (advBackend.value === 'cpu-low') {
+          args.push('-threads', '2');
+        }
+        if (!codec.includes('libvpx')) {
+          args.push('-preset', advPreset.value);
+        } else {
+          args.push('-b:v', '0');
+        }
       }
-    }, 500);
+    } else {
+      args.push('-c:v', 'copy');
+    }
+
+    // Resolution
+    if (advResolution.value === 'custom') {
+      const w = advResW.value || -1;
+      const h = advResH.value || -1;
+      if (w != -1 || h != -1) args.push('-vf', `scale=${w}:${h}`);
+    } else if (advResolution.value !== 'original') {
+      args.push('-vf', `scale=${advResolution.value}`);
+    }
+    // FPS
+    if (advFps.value === 'custom') {
+      if (advFpsCustom.value) args.push('-r', advFpsCustom.value);
+    } else if (advFps.value !== 'original') {
+      args.push('-r', advFps.value);
+    }
+    // Audio
+    if (advAudio.value === 'none') {
+      args.push('-an');
+    } else if (advAudio.value !== 'copy') {
+      args.push('-c:a', advAudio.value);
+    } else {
+      args.push('-c:a', 'copy');
+    }
+    // Custom
+    if (advCustom.value.trim()) {
+      args.push(...advCustom.value.trim().split(/\s+/));
+    }
+
   } else {
-    optimizeBtn.disabled = false;
+    // Simple Mode
+    let crf = '23';
+    if (currentQuality === 'medium') crf = '18';
+    if (currentQuality === 'high') crf = '28';
+    const encoderMode = document.getElementById('encoder-select').value;
+    switch (encoderMode) {
+      case 'gpu-nvidia': args.push('-c:v', 'h264_nvenc', '-cq', crf, '-preset', 'p4'); break;
+      case 'gpu-amd': args.push('-c:v', 'h264_amf', '-qp-i', crf, '-qp-p', crf); break;
+      case 'gpu-intel': args.push('-c:v', 'h264_qsv', '-global_quality', crf); break;
+      case 'cpu-low': args.push('-vcodec', 'libx264', '-crf', crf, '-preset', 'medium', '-threads', '2'); break;
+      default: args.push('-vcodec', 'libx264', '-crf', crf, '-preset', 'fast'); break;
+    }
   }
-});
-
-
-cancelBtn.addEventListener('click', async () => {
-  if (currentChildProcess) {
-    // Kill not fully exposed in all plugin versions easily?
-    // child.kill() should exist.
-    try {
-      await currentChildProcess.kill();
-    } catch (e) { console.error("Kill failed", e); }
-  }
-  progressOverlay.classList.add('hidden');
-  progressOverlay.classList.remove('flex');
-  optimizeBtn.disabled = false;
-});
+  return args;
+}
 
 // Navigation Logic
 const navBtns = document.querySelectorAll('.nav-btn');
@@ -689,11 +961,12 @@ navBtns.forEach(btn => {
     const targetId = btn.dataset.target;
 
     // Update Buttons
+    // Update Buttons
     navBtns.forEach(b => {
       b.classList.remove('bg-purple-600/20', 'text-purple-300', 'border', 'border-purple-500/30');
-      b.classList.add('text-gray-400', 'hover:bg-gray-700', 'hover:text-white');
+      b.classList.add('text-gray-400', 'hover-theme');
     });
-    btn.classList.remove('text-gray-400', 'hover:bg-gray-700', 'hover:text-white');
+    btn.classList.remove('text-gray-400', 'hover-theme');
     btn.classList.add('bg-purple-600/20', 'text-purple-300', 'border', 'border-purple-500/30');
 
     // Update Views
@@ -917,59 +1190,31 @@ trimActionBtn.addEventListener('click', async () => {
 
   const lastDot = trimFilePath.lastIndexOf('.');
   const ext = trimFilePath.substring(lastDot);
-  const defaultPath = trimFilePath.substring(0, lastDot) + '_trimmed' + ext;
+  const name = trimFilePath.split(/[\\/]/).pop();
+  const defaultName = name.substring(0, name.lastIndexOf('.')) + '_trimmed' + ext;
+  const defaultPath = appSettings.outputDir ? await join(appSettings.outputDir, defaultName) : trimFilePath.substring(0, lastDot) + '_trimmed' + ext;
+
   const output = await save({ defaultPath, filters: [{ name: 'Video', extensions: [ext.substring(1)] }] });
   if (!output) return;
 
   const startStr = formatTime(trimState.start, true);
   const durationStr = formatTime(trimState.end - trimState.start, true);
 
-  progressOverlay.classList.remove('hidden');
-  progressOverlay.classList.add('flex');
-  trimActionBtn.disabled = true;
-  initBatchUI([trimFilePath]); // Single item
-  updateBatchUI(0, 0, 'Processing');
-  const statusText = document.getElementById('batch-status-text');
-  if (statusText) statusText.textContent = "Trimming Video...";
+  // Submit to Queue
+  const args = [
+    '-ss', startStr, '-i', trimFilePath, '-t', durationStr,
+    '-c', 'copy', '-map', '0', '-avoid_negative_ts', 'make_zero', '-y', output
+  ];
 
-  try {
-    // ffmpeg -ss START -i INPUT -t DURATION -c copy -map 0 -avoid_negative_ts make_zero OUTPUT
-    const command = Command.sidecar('ffmpeg', [
-      '-ss', startStr, '-i', trimFilePath, '-t', durationStr,
-      '-c', 'copy', '-map', '0', '-avoid_negative_ts', 'make_zero', '-y', output
-    ]);
+  processManager.addJob({
+    name: `Trim: ${trimFilePath.split(/[\\/]/).pop()}`,
+    type: 'Trim',
+    command: 'ffmpeg',
+    args: args,
+    output: output
+  });
 
-    // Trimming is fast (copy), usually no need for progress bar updates from stderr unless long.
-    // We'll just wait.
-    const res = await command.execute();
-
-    if (res.code === 0) {
-      updateBatchUI(0, 100, 'Done');
-      if (statusText) statusText.textContent = "Completed";
-      showToast(`Trim Saved: ${output}`, 'success');
-      setTimeout(() => {
-        progressOverlay.classList.add('hidden');
-        progressOverlay.classList.remove('flex');
-        trimActionBtn.disabled = false;
-      }, 1500);
-    } else {
-      updateBatchUI(0, 0, 'Error');
-      showToast('Trim Failed', 'error');
-      console.error(res.stderr);
-      setTimeout(() => {
-        progressOverlay.classList.add('hidden');
-        progressOverlay.classList.remove('flex');
-        trimActionBtn.disabled = false;
-      }, 2000);
-    }
-  } catch (e) {
-    updateBatchUI(0, 0, 'Error');
-    showToast('Execution Error', 'error');
-    console.error(e);
-    trimActionBtn.disabled = false;
-    progressOverlay.classList.add('hidden');
-    progressOverlay.classList.remove('flex');
-  }
+  showToast(`Trim task added to Queue`, 'success');
 });
 
 // --- Converter Logic ---
@@ -1081,211 +1326,26 @@ convertActionBtn.addEventListener('click', async () => {
     });
   }
 
-  // --- Loop ---
-  progressOverlay.classList.remove('hidden');
-  progressOverlay.classList.add('flex');
-  convertActionBtn.disabled = true;
-  initBatchUI(fileQueue.map(q => q.input));
-
-  let successCount = 0;
-  let errorCount = 0;
-  let isCancelled = false;
-  const cancelBtn = document.getElementById('cancel-btn');
-
-  cancelBtn.onclick = () => {
-    isCancelled = true;
-    if (currentChildProcess) currentChildProcess.kill();
-    document.getElementById('batch-status-text').textContent = "Cancelled";
-    progressOverlay.classList.add('hidden');
-    progressOverlay.classList.remove('flex');
-    convertActionBtn.disabled = false;
-  };
-
-  for (let i = 0; i < fileQueue.length; i++) {
-    if (isCancelled) break;
-    const { input, output } = fileQueue[i];
-    updateBatchUI(i, 0, 'Processing');
-    const statusText = document.getElementById('batch-status-text');
-    if (statusText) statusText.textContent = `Converting ${i + 1}/${fileQueue.length}...`;
-
-    const args = ['-i', input, '-y', output];
-
-    try {
-      const command = Command.sidecar('ffmpeg', args);
-      console.log("Converting", input);
-
-      let durationSec = 0;
-      command.stderr.on('data', line => {
-        const durMatch = line.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d+)/);
-        if (durMatch) durationSec = parseFloat(durMatch[1]) * 3600 + parseFloat(durMatch[2]) * 60 + parseFloat(durMatch[3]);
-
-        if (durationSec > 0) {
-          const tMatch = line.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d+)/);
-          if (tMatch) {
-            const cur = parseFloat(tMatch[1]) * 3600 + parseFloat(tMatch[2]) * 60 + parseFloat(tMatch[3]);
-            const pct = Math.min(100, Math.round((cur / durationSec) * 100));
-            updateBatchUI(i, pct);
-          }
-        }
-      });
-
-      currentChildProcess = await command.spawn();
-
-      await new Promise((resolve) => {
-        command.on('close', d => {
-          if (d.code === 0) { successCount++; updateBatchUI(i, 100, 'Done'); }
-          else { errorCount++; updateBatchUI(i, 0, 'Error'); }
-          resolve();
-        });
-        command.on('error', () => { errorCount++; updateBatchUI(i, 0, 'Error'); resolve(); });
-      });
-      currentChildProcess = null;
-
-    } catch (e) {
-      console.error(e);
-      showToast(`Error on file ${i + 1}`, 'error');
-      updateBatchUI(i, 0, 'Error');
-      errorCount++;
-    }
-  }
-
-  // Done
-  if (!isCancelled) {
-    const statusText = document.getElementById('batch-status-text');
-    if (statusText) statusText.textContent = "Completed";
-
-    const btn = document.getElementById('cancel-btn');
-    btn.textContent = "Close";
-    btn.onclick = () => {
-      progressOverlay.classList.add('hidden');
-      progressOverlay.classList.remove('flex');
-      convertActionBtn.disabled = false;
-      btn.textContent = "Cancel Processing";
-    };
-
-    if (successCount > 0 && errorCount === 0) {
-      showToast(`All ${successCount} files converted!`, 'success');
-    } else {
-      showToast(`Done: ${successCount} Success, ${errorCount} Failed`, 'info');
-    }
-  } else {
-    convertActionBtn.disabled = false;
-  }
-});
-
-// --- Settings Logic ---
-const settingDefaultQuality = document.getElementById('setting-default-quality');
-const settingDefaultFormat = document.getElementById('setting-default-format');
-
-function loadSettings() {
-  // Quality
-  const savedQuality = localStorage.getItem('defaultQuality') || 'medium';
-  if (settingDefaultQuality) {
-    settingDefaultQuality.value = savedQuality;
-    // Update Optimizer default (currentQuality is global)
-    currentQuality = savedQuality;
-    // Update UI for option buttons
-    if (typeof optionBtns !== 'undefined') {
-      optionBtns.forEach(b => {
-        b.classList.remove('ring-2', 'ring-purple-500', 'bg-gray-700');
-        b.classList.add('bg-gray-800');
-        if (b.dataset.quality === savedQuality) {
-          b.classList.remove('bg-gray-800');
-          b.classList.add('ring-2', 'ring-purple-500', 'bg-gray-700');
-        }
-      });
-    }
-  }
-
-  // Format
-  const savedFormat = localStorage.getItem('defaultFormat') || 'mp4';
-  if (settingDefaultFormat) {
-    settingDefaultFormat.value = savedFormat;
-    if (convertFormatSelect) convertFormatSelect.value = savedFormat;
-  }
-}
-
-// Listeners
-if (settingDefaultQuality) {
-  settingDefaultQuality.addEventListener('change', (e) => {
-    localStorage.setItem('defaultQuality', e.target.value);
-    // Apply immediately
-    currentQuality = e.target.value;
-    showToast('Default quality saved', 'success');
-    // Update UI
-    if (typeof optionBtns !== 'undefined') {
-      optionBtns.forEach(b => {
-        b.classList.remove('ring-2', 'ring-purple-500', 'bg-gray-700');
-        b.classList.add('bg-gray-800');
-        if (b.dataset.quality === currentQuality) {
-          b.classList.remove('bg-gray-800');
-          b.classList.add('ring-2', 'ring-purple-500', 'bg-gray-700');
-        }
-      });
-    }
-  });
-}
-
-if (settingDefaultFormat) {
-  settingDefaultFormat.addEventListener('change', (e) => {
-    localStorage.setItem('defaultFormat', e.target.value);
-    if (convertFormatSelect) convertFormatSelect.value = e.target.value;
-    showToast('Default format saved', 'success');
-  });
-}
-
-// Initialize Settings on Load
-/* Theme Logic */
-const themeBtns = document.querySelectorAll('.theme-btn');
-const body = document.body;
-
-function initTheme() {
-  const savedTheme = localStorage.getItem('app-theme') || '';
-  // Clear potentially conflicting classes if switching from non-JS state
-  body.classList.remove('theme-light', 'theme-midnight', 'theme-sunset');
-
-  if (savedTheme) {
-    body.classList.add(savedTheme);
-  }
-  highlightActiveTheme(savedTheme);
-}
-
-function highlightActiveTheme(theme) {
-  if (!themeBtns) return;
-  themeBtns.forEach(btn => {
-    // Reset rings
-    btn.classList.remove('ring-2', 'ring-purple-500', 'ring-blue-500', 'ring-pink-500', 'ring-offset-2', 'ring-offset-black');
-
-    if (btn.dataset.theme === theme) {
-      let ringColor = 'ring-purple-500';
-      if (theme === 'theme-midnight') ringColor = 'ring-blue-500';
-      if (theme === 'theme-sunset') ringColor = 'ring-pink-500';
-
-      // offset-black matches standard dark bg, might look slightly off in light mode but acceptable ring style
-      btn.classList.add('ring-2', ringColor, 'ring-offset-2');
-    }
-  });
-}
-
-if (themeBtns) {
-  themeBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const theme = btn.dataset.theme;
-
-      // Remove all known themes
-      body.classList.remove('theme-light', 'theme-midnight', 'theme-sunset');
-
-      // Add new
-      if (theme) body.classList.add(theme);
-
-      localStorage.setItem('app-theme', theme);
-      highlightActiveTheme(theme);
-
-      // Optional: Provide feedback
-      // showToast('Theme Updated', 'success');
+  // --- Queue Submission ---
+  fileQueue.forEach(item => {
+    processManager.addJob({
+      name: item.input.split(/[\\/]/).pop(),
+      type: 'Convert',
+      command: 'ffmpeg',
+      args: ['-i', item.input, '-y', item.output],
+      output: item.output
     });
   });
-}
+
+  converterFiles = [];
+  setupConverterFile([]);
+  converterUploadContent.classList.remove('hidden');
+  converterFileInfo.classList.add('hidden');
+
+  showToast(`${fileQueue.length} items added to Queue`, 'success');
+});
+
+// --- Settings Logic Removed (Replaced by Global appSettings) ---
 
 /* --- Video Merger Logic --- */
 const mergerView = document.getElementById('view-merger');
@@ -1363,46 +1423,34 @@ if (mergerActionBtn) {
       return;
     }
 
-    const output = await save({ filters: [{ name: 'Video', extensions: ['mp4'] }] });
+    const output = await save({ defaultPath: appSettings.outputDir ? await join(appSettings.outputDir, 'merged_video.mp4') : undefined, filters: [{ name: 'Video', extensions: ['mp4'] }] });
     if (!output) return;
-
-    progressOverlay.classList.remove('hidden');
-    progressOverlay.classList.add('flex');
-    initBatchUI([]); // Clear list
-    const statusText = document.getElementById('batch-status-text');
-    if (statusText) statusText.textContent = "Merging...";
 
     try {
       // Generate Concat List
-      // Windows requires full paths, escaped? FFmpeg concat demuxer handles standard paths usually.
-      // Format: file 'path'
-
       const listContent = mergerFiles.map(f => `file '${f.replace(/\\/g, '/')}'`).join('\n');
       const tempD = await tempDir();
-      const listPath = await join(tempD, 'concat_list.txt');
+      const listPath = await join(tempD, `concat_list_${Date.now()}.txt`);
 
       await writeTextFile(listPath, listContent);
 
       const args = ['-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', '-y', output];
 
-      const command = Command.sidecar('ffmpeg', args);
-      const res = await command.execute();
+      processManager.addJob({
+        name: `Merge ${mergerFiles.length} files`,
+        type: 'Merge',
+        command: 'ffmpeg',
+        args: args,
+        output: output
+      });
 
-      if (res.code === 0) {
-        showToast(`Merged successfully!\n${output}`, 'success');
-        mergerFiles = [];
-        renderMergerList();
-      } else {
-        showToast('Merge Failed. Codecs must match.', 'error');
-        console.error(res.stderr);
-      }
+      mergerFiles = [];
+      renderMergerList();
+      showToast('Merge task queued', 'success');
 
     } catch (e) {
       console.error(e);
       showToast('Merge Error', 'error');
-    } finally {
-      progressOverlay.classList.add('hidden');
-      progressOverlay.classList.remove('flex');
     }
   });
 }
@@ -1437,8 +1485,13 @@ function updateAudioUI() {
 // Extract
 if (btnExtract) {
   btnExtract.addEventListener('click', async () => {
+    // Extract Logic
     if (!audioFile) return;
-    const output = await save({ defaultPath: audioFile.replace(/\.[^.]+$/, '.mp3'), filters: [{ name: 'Audio', extensions: ['mp3'] }] });
+    const name = audioFile.split(/[\\/]/).pop();
+    const defaultName = name.replace(/\.[^.]+$/, '.mp3');
+    const defaultPath = appSettings.outputDir ? await join(appSettings.outputDir, defaultName) : audioFile.replace(/\.[^.]+$/, '.mp3');
+
+    const output = await save({ defaultPath, filters: [{ name: 'Audio', extensions: ['mp3'] }] });
     if (!output) return;
 
     runAudioCommand(['-i', audioFile, '-vn', '-acodec', 'libmp3lame', '-q:a', '2', '-y', output]);
@@ -1447,8 +1500,13 @@ if (btnExtract) {
 // Mute
 if (btnMute) {
   btnMute.addEventListener('click', async () => {
+    // Mute Logic
     if (!audioFile) return;
-    const output = await save({ defaultPath: audioFile.replace(/\.[^.]+$/, '_muted.mp4'), filters: [{ name: 'Video', extensions: ['mp4'] }] });
+    const name = audioFile.split(/[\\/]/).pop();
+    const defaultName = name.replace(/\.[^.]+$/, '_muted.mp4');
+    const defaultPath = appSettings.outputDir ? await join(appSettings.outputDir, defaultName) : audioFile.replace(/\.[^.]+$/, '_muted.mp4');
+
+    const output = await save({ defaultPath, filters: [{ name: 'Video', extensions: ['mp4'] }] });
     if (!output) return;
 
     runAudioCommand(['-i', audioFile, '-c:v', 'copy', '-an', '-y', output]);
@@ -1456,9 +1514,14 @@ if (btnMute) {
 }
 // Normalize
 if (btnNormalize) {
+  // Normalize Logic (Fixing garbage and implementing logic)
   btnNormalize.addEventListener('click', async () => {
     if (!audioFile) return;
-    const output = await save({ defaultPath: audioFile.replace(/\.[^.]+$/, '_norm.mp4'), filters: [{ name: 'Video', extensions: ['mp4'] }] });
+    const name = audioFile.split(/[\\/]/).pop();
+    const defaultName = name.replace(/\.[^.]+$/, '_norm.mp4');
+    const defaultPath = appSettings.outputDir ? await join(appSettings.outputDir, defaultName) : audioFile.replace(/\.[^.]+$/, '_norm.mp4');
+
+    const output = await save({ defaultPath, filters: [{ name: 'Video', extensions: ['mp4'] }] });
     if (!output) return;
 
     // Loudnorm filter
@@ -1467,24 +1530,13 @@ if (btnNormalize) {
 }
 
 async function runAudioCommand(args) {
-  progressOverlay.classList.remove('hidden');
-  progressOverlay.classList.add('flex');
-  initBatchUI([]); // Clear list
-  const statusText = document.getElementById('batch-status-text');
-  if (statusText) statusText.textContent = "Processing Audio...";
-
-  try {
-    const cmd = Command.sidecar('ffmpeg', args);
-    const res = await cmd.execute();
-    if (res.code === 0) showToast('Success!', 'success');
-    else showToast('Failed', 'error');
-  } catch (e) {
-    console.error(e);
-    showToast('Error', 'error');
-  } finally {
-    progressOverlay.classList.add('hidden');
-    progressOverlay.classList.remove('flex');
-  }
+  if (!audioFile) return;
+  processManager.addJob({
+    name: `Audio: ${audioFile.split(/[\\/]/).pop()}`,
+    type: 'Audio',
+    command: 'ffmpeg',
+    args: args
+  });
 }
 
 /* --- Inspector Logic --- */
@@ -1530,5 +1582,401 @@ async function inspectFile(path) {
   }
 }
 
-initTheme();
-loadSettings();
+// Init
+document.addEventListener('DOMContentLoaded', () => {
+  console.log("App Initializing... v2 NEW UI");
+  initTheme();
+  loadSettings();
+  processManager.init();
+  initQueueDragDrop();
+});
+
+function initQueueDragDrop() {
+  const queueZone = document.getElementById('view-queue');
+  if (!queueZone) return;
+
+  queueZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    // Visual feedback
+    queueZone.classList.add('bg-purple-900/10');
+  });
+
+  queueZone.addEventListener('dragleave', e => {
+    e.preventDefault();
+    queueZone.classList.remove('bg-purple-900/10');
+  });
+
+  queueZone.addEventListener('drop', e => {
+    e.preventDefault();
+    queueZone.classList.remove('bg-purple-900/10');
+
+    const paths = [];
+    if (e.dataTransfer.files.length) {
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        const f = e.dataTransfer.files[i];
+        if (f.path) paths.push(f.path);
+        // Fallback for some browsers/environments if path is hidden, but Tauri usually exposes it.
+      }
+    }
+
+    if (paths.length > 0) {
+      queueFilesDefault(paths);
+    }
+  });
+}
+
+function queueFilesDefault(paths) {
+  paths.forEach(path => {
+    // Default: Optimize H.264
+    const lastDot = path.lastIndexOf('.');
+    const output = path.substring(0, lastDot) + '_optimized.mp4';
+
+    processManager.addJob({
+      name: `Auto-Opt: ${path.replace(/^.*[\\\/]/, '')}`,
+      type: 'Optimizer',
+      command: 'ffmpeg',
+      args: ['-i', path, '-c:v', 'libx264', '-crf', '23', '-preset', 'fast', '-c:a', 'aac', '-y', output],
+      output: output
+    });
+  });
+  showToast(`${paths.length} files added to queue`, 'success');
+}
+
+/* --- Settings & Theme Logic (Variables Defined at Top) --- */
+
+// Note: loadSettings functions etc. are defined below and used by init.
+
+function loadSettings() {
+  const s = localStorage.getItem('appSettings');
+  if (s) {
+    try {
+      appSettings = { ...appSettings, ...JSON.parse(s) };
+    } catch (e) { console.error("Settings parse error", e); }
+  }
+  applySettings();
+  initSettingsUI();
+}
+
+function saveSettings() {
+  localStorage.setItem('appSettings', JSON.stringify(appSettings));
+}
+
+function applySettings() {
+  // Theme Application
+  const body = document.body;
+  body.classList.remove('theme-cosmic', 'theme-light', 'theme-midnight', 'theme-sunset');
+  if (appSettings.theme && appSettings.theme !== 'theme-cosmic') {
+    body.classList.add(appSettings.theme);
+  }
+
+  // Update UI State
+  const btns = document.querySelectorAll('.theme-btn');
+  btns.forEach(btn => {
+    if (btn.dataset.theme === appSettings.theme) {
+      btn.classList.add('ring-2', 'ring-purple-500', 'ring-offset-2', 'ring-offset-gray-900');
+    } else {
+      btn.classList.remove('ring-2', 'ring-purple-500', 'ring-offset-2', 'ring-offset-gray-900');
+    }
+  });
+
+  // Update Notification Checkbox
+  const notifCheck = document.getElementById('setting-notifications');
+  if (notifCheck) {
+    notifCheck.checked = appSettings.notifications;
+  }
+
+  // Update Output Dir Label
+  const dirLabel = document.getElementById('setting-output-dir-label');
+  if (dirLabel) {
+    dirLabel.textContent = appSettings.outputDir ? appSettings.outputDir : "Always ask for location";
+    dirLabel.title = appSettings.outputDir || "";
+  }
+}
+
+function initTheme() {
+  // Kept for backward compatibility with existing calls
+}
+
+function initSettingsUI() {
+  // 1. Settings Tab Navigation (Event Delegation)
+  const settingsContainer = document.getElementById('view-settings');
+  if (settingsContainer) {
+    settingsContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.settings-nav-btn');
+      if (!btn) return;
+
+      // Reset tabs
+      document.querySelectorAll('.settings-nav-btn').forEach(b => {
+        b.classList.remove('active', 'bg-gray-800', 'text-white');
+        b.classList.add('text-gray-400');
+      });
+
+      // Activate clicked
+      btn.classList.remove('text-gray-400');
+      btn.classList.add('active', 'bg-gray-800', 'text-white');
+
+      // Switch content
+      const targetId = `tab-content-${btn.dataset.tab}`;
+      document.querySelectorAll('.settings-tab-content').forEach(content => {
+        if (content.id === targetId) content.classList.remove('hidden');
+        else content.classList.add('hidden');
+      });
+    });
+  }
+
+  // 2. Theme Buttons (Event Delegation)
+  // We can attach to a parent or just use old logic if elements exist
+  const themeContainer = document.getElementById('tab-content-appearance');
+  if (themeContainer) {
+    themeContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.theme-btn');
+      if (!btn) return;
+
+      appSettings.theme = btn.dataset.theme;
+      saveSettings();
+      applySettings();
+    });
+  } else {
+    // Fallback
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        appSettings.theme = btn.dataset.theme;
+        saveSettings();
+        applySettings();
+      });
+    });
+  }
+
+  // 3. Notification Checkbox
+  const notifCheck = document.getElementById('setting-notifications');
+  if (notifCheck) {
+    notifCheck.onchange = (e) => {
+      appSettings.notifications = e.target.checked;
+      saveSettings();
+    };
+  }
+
+  // 4. Set Output Directory
+  const btnSetDir = document.getElementById('btn-set-output-dir');
+  if (btnSetDir) {
+    btnSetDir.onclick = async () => {
+      try {
+        console.log("Opening directory dialog...");
+        const selected = await open({
+          directory: true,
+          multiple: false,
+          title: "Select Default Export Folder"
+        });
+        if (selected) {
+          appSettings.outputDir = selected;
+          saveSettings();
+          applySettings();
+        }
+      } catch (e) {
+        console.error("Failed to select directory", e);
+        // Fallback or user info
+      }
+    };
+  }
+
+  // 5. Logs Logic
+  const btnRefreshLogs = document.getElementById('btn-refresh-logs');
+  if (btnRefreshLogs) {
+    btnRefreshLogs.onclick = () => {
+      Logger.init();
+      Logger.render();
+    };
+  }
+
+  const btnClearLogs = document.getElementById('btn-clear-logs');
+  if (btnClearLogs) {
+    btnClearLogs.onclick = () => {
+      if (confirm('Clear all application logs?')) {
+        Logger.clear();
+      }
+    };
+  }
+
+  // Initial Render of Logs
+  Logger.render();
+}
+
+// Override showToast to respect settings
+const originalShowToast = window.showToast;
+window.showToast = function (msg, type) {
+  if (appSettings.notifications === false) return;
+  if (originalShowToast) originalShowToast(msg, type);
+};
+
+// --- Preset Manager ---
+const presetManager = {
+  presets: {},
+
+  init() {
+    this.load();
+    this.updateDropdown();
+
+    // Listeners
+    const select = document.getElementById('user-preset-select');
+    const saveBtn = document.getElementById('btn-save-preset');
+    const delBtn = document.getElementById('btn-del-preset');
+
+    // Watch relevant inputs to switch to "Unsaved" state
+    const inputs = ['adv-backend', 'adv-codec', 'adv-preset', 'adv-crf', 'adv-resolution', 'adv-fps', 'adv-audio', 'adv-custom'];
+    inputs.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('change', () => this.resetSelection());
+        el.addEventListener('input', () => this.resetSelection());
+      }
+    });
+
+    if (select) {
+      select.addEventListener('change', (e) => {
+        if (e.target.value) this.apply(e.target.value);
+        else this.toggleDelete(false);
+      });
+    }
+
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async () => {
+        const name = prompt("Enter preset name:");
+        if (name) this.save(name);
+      });
+    }
+
+    if (delBtn) {
+      delBtn.addEventListener('click', () => {
+        const name = select.value;
+        if (name && confirm(`Delete preset "${name}"?`)) {
+          this.delete(name);
+        }
+      });
+    }
+  },
+
+  load() {
+    const data = localStorage.getItem('userPresets');
+    if (data) {
+      try { this.presets = JSON.parse(data); } catch (e) { console.error(e); }
+    }
+  },
+
+  save(name) {
+    if (!name.trim()) return;
+
+    // Capture current state
+    const config = {
+      backend: document.getElementById('adv-backend')?.value,
+      codec: document.getElementById('adv-codec')?.value,
+      preset: document.getElementById('adv-preset')?.value,
+      crf: document.getElementById('adv-crf')?.value,
+      resolution: document.getElementById('adv-resolution')?.value,
+      resW: document.getElementById('adv-res-w')?.value,
+      resH: document.getElementById('adv-res-h')?.value,
+      fps: document.getElementById('adv-fps')?.value,
+      fpsVal: document.getElementById('adv-fps-custom')?.value,
+      audio: document.getElementById('adv-audio')?.value,
+      custom: document.getElementById('adv-custom')?.value
+    };
+
+    this.presets[name] = config;
+    localStorage.setItem('userPresets', JSON.stringify(this.presets));
+    this.updateDropdown();
+
+    // Select it
+    const select = document.getElementById('user-preset-select');
+    if (select) {
+      select.value = name;
+      this.toggleDelete(true);
+    }
+    showToast(`Preset "${name}" saved`, 'success');
+  },
+
+  delete(name) {
+    delete this.presets[name];
+    localStorage.setItem('userPresets', JSON.stringify(this.presets));
+    this.updateDropdown();
+    this.resetSelection();
+    showToast(`Preset "${name}" deleted`, 'info');
+  },
+
+  apply(name) {
+    const config = this.presets[name];
+    if (!config) return;
+
+    // Helper to safely set value and trigger change
+    const set = (id, val) => {
+      const el = document.getElementById(id);
+      if (el && val !== undefined) {
+        el.value = val;
+        el.dispatchEvent(new Event('change'));
+      }
+    };
+
+    set('adv-backend', config.backend);
+
+    setTimeout(() => {
+      set('adv-codec', config.codec);
+      set('adv-preset', config.preset);
+      set('adv-crf', config.crf);
+      // Update CRF Display
+      const crfDisp = document.getElementById('adv-crf-val');
+      if (crfDisp) crfDisp.textContent = config.crf;
+
+      set('adv-resolution', config.resolution);
+      if (config.resolution === 'custom') {
+        document.getElementById('adv-res-w').value = config.resW || '';
+        document.getElementById('adv-res-h').value = config.resH || '';
+      }
+
+      set('adv-fps', config.fps);
+      if (config.fps === 'custom') {
+        document.getElementById('adv-fps-custom').value = config.fpsVal || '';
+      }
+
+      set('adv-audio', config.audio);
+      set('adv-custom', config.custom);
+
+      this.toggleDelete(true);
+    }, 50);
+  },
+
+  updateDropdown() {
+    const select = document.getElementById('user-preset-select');
+    if (!select) return;
+
+    // Keep first option
+    const current = select.value;
+    // Save children except options? No, rebuild.
+    select.innerHTML = '<option value="">-- Current Settings --</option>';
+
+    Object.keys(this.presets).forEach(name => {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = name;
+      select.appendChild(option);
+    });
+
+    // Restore selection if exists
+    if (this.presets[current]) select.value = current;
+  },
+
+  resetSelection() {
+    const select = document.getElementById('user-preset-select');
+    if (select) select.value = "";
+    this.toggleDelete(false);
+  },
+
+  toggleDelete(canDelete) {
+    const btn = document.getElementById('btn-del-preset');
+    if (btn) {
+      if (canDelete) btn.classList.remove('hidden');
+      else btn.classList.add('hidden');
+    }
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  presetManager.init();
+});

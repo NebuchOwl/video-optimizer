@@ -1,4 +1,5 @@
-# Video Optimizer Pro
+# Video Optimizer
+> **Beta 0.2.1**
 
 A powerful, high-performance video toolkit built with **Tauri v2**, **Rust**, and **FFmpeg**. Optimize, trim, convert, and inspect your media files with a beautiful, modern interface.
 
@@ -9,24 +10,20 @@ A powerful, high-performance video toolkit built with **Tauri v2**, **Rust**, an
     *   **Smart Compression**: Reduce file size while maintaining quality (H.264, H.265, ProRes).
     *   **Hardware Selection**: Dedicated backend selector for Software (CPU), NVIDIA (NVENC/AV1), AMD (AMF), and Intel (QSV/VP9).
     *   **Advanced Codecs**: Support for H.264, H.265 (HEVC), AV1, VP9, and ProRes (CPU only).
-    *   **Low Power Mode**: 'Standard' vs 'Low Usage' CPU profiles.
 *   **Precision Trimmer**:
     *   **Lossless Trimming**: Cut video segments instantly without re-encoding.
-    *   **Local Streaming**: Integrated Rust server (Axum) for smooth playback of large files.
-*   **Universal Converter**:
-    *   Convert between all major formats: MP4, MKV, MOV, WEBM, AVI, GIF.
-    *   Batch conversion support with progress tracking.
-*   **Video Merger**:
+    *   **Local Streaming**: Integrated Rust server for smooth playback of large files.
+*   **Universal Converter & Merger**:
+    *   Convert between MP4, MKV, MOV, WEBM, AVI, GIF.
     *   Stitch multiple clips together into a single file.
 *   **Audio Lab**:
-    *   Extract MP3 from video.
-    *   Remove (Mute) audio tracks.
-    *   Normalize audio levels (loudnorm).
+    *   Extract MP3, Mute Tracks, or Normalize Audio Levels.
+*   **Settings Hub (New in v0.2.1)**:
+    *   **Centralized Configuration**: Tabbed interface for General, Processing, Logs, Appearance, and About.
+    *   **Defaults Engine**: Set preferred optimization profiles and target formats globally.
+    *   **Premium Themes**: Choose from **Cosmic**, **Light**, **Midnight**, or **Sunset** with a redesigned visual selector.
 *   **Media Inspector**:
-    *   Drag and drop to view detailed metadata (Codecs, Bitrate, Colorspace).
-*   **Modern Experience**:
-    *   **Theming**: Choose from Cosmic, Light, Midnight, or Sunset themes.
-    *   **Native Integration**: System file dialogs and robust Drag & Drop support.
+    *   Detailed metadata analysis for any media file.
 
 ## 🛠️ Tech Stack
 
@@ -37,11 +34,9 @@ A powerful, high-performance video toolkit built with **Tauri v2**, **Rust**, an
 ## 📦 Installation & Setup
 
 ### Prerequisites
-1.  **Node.js** (v18 or newer).
-2.  **Rust** (Latest stable version).
-3.  **Visual Studio C++ Build Tools** (for Windows development).
-4.  **FFmpeg**: The application expects an `ffmpeg` binary.
-    *   *Note: For development, ensure FFmpeg is in your system PATH or configured in `tauri.conf.json`.*
+1.  **Node.js** (v18+).
+2.  **Rust** (Latest stable).
+3.  **FFmpeg**: Must be available in system PATH or bundled.
 
 ### Getting Started
 
@@ -54,25 +49,42 @@ A powerful, high-performance video toolkit built with **Tauri v2**, **Rust**, an
     ```bash
     npm run tauri dev
     ```
-    This command will start the Vite frontend server and launch the Tauri application window.
 
 3.  **Build for Production**:
     ```bash
     npm run tauri build
     ```
-    The compiled executable (MSI/EXE) will be located in `src-tauri/target/release/bundle/msi`.
-
-## 🧩 Architecture Highlights
-
-*   **Sidecar Pattern**: Heavy video processing tasks are offloaded to a designated `ffmpeg` binary to ensure performance and stability.
-*   **Streaming Server**: A custom Rust backend service runs on port `18493` to stream local video files to the frontend video player, bypassing web security restrictions on `file://` protocols.
-*   **Batch Queue UI**: A centralized, non-blocking UI component handles progress updates for long-running operations across different tabs.
 
 ## 👤 Author
 
-**Sina Kop**  
-*Video Optimizer Pro*
+**Sina Kop**
+*Video Optimizer*
 
 ## 📄 License
 
-This project is licensed under the MIT License.
+This project is licensed under a **Custom Non-Commercial License**.
+
+You are free to use, modify, and share this software for **personal, educational, and non-commercial purposes**.
+
+❌ Commercial use (including paid products, SaaS, or business use) is **not permitted** without a separate commercial license.
+
+For commercial licensing inquiries, please contact the author.
+
+See `LICENSE.txt` for details.
+
+### Commercial License
+
+Commercial use of this software is available under a separate
+Commercial License.
+
+See `COMMERCIAL_LICENSE.txt` for details.
+
+### FFmpeg & Codec Notice
+
+This application uses FFmpeg as an external binary and may utilize hardware-accelerated
+encoding technologies such as NVIDIA NVENC, AMD AMF, and Intel QSV.
+
+The use of this software does **not** grant any patent or codec license.
+Certain codecs (e.g. H.264, H.265/HEVC, ProRes, AAC) may be subject to patent or licensing restrictions.
+
+Users are solely responsible for ensuring compliance with all applicable codec and patent laws.

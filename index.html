@@ -61,6 +61,15 @@
       </button>
       <button
         class="nav-btn w-full text-left px-2 lg:px-4 py-3 rounded-xl flex items-center justify-center lg:justify-start space-x-0 lg:space-x-3 text-gray-400 hover-theme transition-all group"
+        data-target="view-queue" title="Queue">
+        <svg class="w-6 h-6 min-w-[1.5rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+        <span class="hidden lg:block truncate">Queue</span>
+      </button>
+      <button
+        class="nav-btn w-full text-left px-2 lg:px-4 py-3 rounded-xl flex items-center justify-center lg:justify-start space-x-0 lg:space-x-3 text-gray-400 hover-theme transition-all group"
         data-target="view-audio" title="Audio">
         <svg class="w-6 h-6 min-w-[1.5rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -195,6 +204,33 @@
 
         <!-- Advanced Mode -->
         <div id="panel-advanced" class="hidden space-y-6 bg-gray-800 p-6 rounded-2xl border border-gray-700">
+
+          <!-- User Presets Bar -->
+          <div
+            class="flex flex-col md:flex-row justify-between items-center bg-gray-900/50 p-3 rounded-xl border border-gray-700/50 gap-3">
+            <div class="flex items-center gap-3 w-full md:w-auto flex-1">
+              <label class="text-xs font-bold text-purple-400 uppercase tracking-widest whitespace-nowrap">Load
+                Preset:</label>
+              <select id="user-preset-select"
+                class="bg-gray-800 border border-gray-700 text-sm text-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 w-full outline-none py-1.5 px-3">
+                <option value="">-- Current Settings --</option>
+              </select>
+            </div>
+            <div class="flex gap-2 w-full md:w-auto justify-end">
+              <button id="btn-save-preset"
+                class="text-xs bg-gray-700 border border-gray-600 hover:bg-purple-600 hover:border-purple-500 text-white px-4 py-1.5 rounded-lg transition-all shadow-sm font-medium">Save
+                New</button>
+              <button id="btn-del-preset"
+                class="text-xs bg-gray-700 border border-gray-600 hover:bg-red-600 hover:border-red-500 text-white px-3 py-1.5 rounded-lg transition-all shadow-sm font-medium hidden">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
+                  </path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
           <!-- Settings Grid -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Codec -->
@@ -508,88 +544,7 @@
 
     </section>
 
-    <!-- View: Settings -->
-    <section id="view-settings"
-      class="view-section hidden h-full w-full overflow-y-auto p-4 lg:p-8 flex flex-col items-center">
-      <div class="mb-8 space-y-2 text-center flex-none">
-        <h1 class="text-3xl font-bold text-white">Settings</h1>
-        <p class="text-gray-400">Customize your experience</p>
-      </div>
 
-      <div class="w-full max-w-2xl space-y-6 flex-none">
-
-        <!-- Logic Defaults -->
-        <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700">
-          <h3 class="text-xl font-bold text-white mb-4">Defaults</h3>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Opt Quality -->
-            <div>
-              <label class="block text-gray-400 text-sm mb-2">Default Optimization</label>
-              <select id="setting-default-quality"
-                class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 outline-none">
-                <option value="high">High Quality (Larger)</option>
-                <option value="medium" selected>Balanced</option>
-                <option value="low">Max Compression (Low)</option>
-              </select>
-            </div>
-
-            <!-- Convert Format -->
-            <div>
-              <label class="block text-gray-400 text-sm mb-2">Default Target Format</label>
-              <select id="setting-default-format"
-                class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 outline-none">
-                <!-- Populated by JS same as Converter? Or hardcode common -->
-                <option value="mp4" selected>MP4</option>
-                <option value="mkv">MKV</option>
-                <option value="gif">GIF</option>
-                <option value="webm">WebM</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <!-- Appearance -->
-        <div class="bg-theme-secondary p-6 rounded-2xl border border-theme">
-          <h3 class="text-xl font-bold text-theme-primary mb-4">Appearance</h3>
-
-          <div class="space-y-4">
-            <label class="block text-theme-secondary text-sm font-medium">Theme Selection</label>
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <button
-                class="theme-btn p-3 rounded-lg border border-gray-600 bg-[#111827] !text-white hover:ring-2 ring-purple-500 transition-all text-xs font-bold shadow-lg"
-                data-theme="">
-                Cosmic
-              </button>
-              <button
-                class="theme-btn p-3 rounded-lg border border-gray-300 bg-[#f9fafb] text-gray-900 hover:ring-2 ring-purple-500 transition-all text-xs font-bold shadow-lg"
-                data-theme="theme-light">
-                Light
-              </button>
-              <button
-                class="theme-btn p-3 rounded-lg border border-blue-900 bg-gradient-to-br from-[#0f172a] to-[#312e81] !text-white hover:ring-2 ring-blue-500 transition-all text-xs font-bold shadow-lg"
-                data-theme="theme-midnight">
-                Midnight
-              </button>
-              <button
-                class="theme-btn p-3 rounded-lg border border-orange-900 bg-gradient-to-br from-[#2a0a1a] to-[#4a044e] !text-white hover:ring-2 ring-pink-500 transition-all text-xs font-bold shadow-lg"
-                data-theme="theme-sunset">
-                Sunset
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- About -->
-        <div class="text-center pt-8 border-t border-theme">
-          <p class="text-theme-secondary text-sm">Video Tools v1.0.0</p>
-          <p class="text-theme-secondary text-xs mt-1">Created by <span class="text-theme-primary font-bold">Sina
-              Kop</span></p>
-          <p class="text-theme-secondary text-[10px] mt-1 opacity-70">Powered by Tauri v2 & FFmpeg</p>
-        </div>
-
-      </div>
-    </section>
 
 
     <!-- View: Merger -->
@@ -716,41 +671,346 @@
       </div>
     </section>
 
-    <!-- Batch Task Queue Overlay -->
-    <div id="progress-overlay"
-      class="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex-col items-center justify-center p-4">
-      <div
-        class="w-full max-w-2xl bg-gray-900 p-6 rounded-2xl border border-gray-700 shadow-2xl flex flex-col max-h-[80vh]">
-        <div class="flex justify-between items-center mb-4 flex-none">
-          <h3 class="text-xl font-bold text-white flex items-center gap-2">
-            <svg class="w-5 h-5 text-purple-500 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M12 4v2m0 12v2m8-8h-2M4 12H2m15.071-7.071l-1.414 1.414M7.05 17.05l-1.414 1.414m0-11.314l1.414 1.414M17.071 17.071l1.414 1.414">
-              </path>
-            </svg>
-            Processing Queue
-          </h3>
-          <span id="batch-status-text" class="text-sm text-gray-400">Initializing...</span>
+    <!-- View: Settings -->
+    <!-- View: Settings -->
+    <section id="view-settings" class="view-section hidden h-full w-full p-4 lg:p-8 flex items-start gap-8">
+
+      <!-- Settings Sidebar -->
+      <aside class="w-64 flex-shrink-0 flex flex-col gap-2">
+        <div class="mb-6 px-2">
+          <h1 class="text-2xl font-bold text-white">Settings</h1>
+          <p class="text-xs text-gray-400 mt-1">Application Configuration</p>
         </div>
 
-        <!-- Scrollable List -->
-        <div id="progress-list" class="flex-1 overflow-y-auto space-y-2 pr-2 mb-4 min-h-[100px]">
-          <!-- Items injected by JS -->
+        <button
+          class="settings-nav-btn active flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all bg-gray-800 text-white"
+          data-tab="general">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+            </path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z">
+            </path>
+          </svg>
+          General
+        </button>
+
+        <button
+          class="settings-nav-btn flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-all"
+          data-tab="processing">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z">
+            </path>
+          </svg>
+          Processing
+        </button>
+
+        <button
+          class="settings-nav-btn flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-all"
+          data-tab="logs">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+            </path>
+          </svg>
+          Logs
+        </button>
+
+        <button
+          class="settings-nav-btn flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-all"
+          data-tab="appearance">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01">
+            </path>
+          </svg>
+          Appearance
+        </button>
+
+        <button
+          class="settings-nav-btn flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-all"
+          data-tab="about">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          About
+        </button>
+      </aside>
+
+      <!-- Settings Content -->
+      <div class="flex-1 h-full overflow-y-auto pr-2 custom-scrollbar">
+
+        <!-- TAB: General -->
+        <div id="tab-content-general" class="settings-tab-content space-y-6">
+          <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <h3 class="text-xl font-bold text-white mb-6">General Settings</h3>
+            <div class="space-y-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="font-medium text-white">Default Export Folder</div>
+                  <div id="setting-output-dir-label" class="text-xs text-gray-500">Always ask for location</div>
+                </div>
+                <button id="btn-set-output-dir"
+                  class="px-4 py-2 bg-gray-700 text-gray-200 rounded-lg text-sm border border-gray-600 hover:bg-gray-600 transition-colors">Browse</button>
+              </div>
+              <div class="border-t border-gray-700 pt-4 flex items-center justify-between">
+                <div>
+                  <div class="font-medium text-white">Notifications</div>
+                  <div class="text-xs text-gray-500">Show toast popups for completed tasks</div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="setting-notifications" class="sr-only peer" checked>
+                  <div
+                    class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600">
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div class="flex justify-end flex-none pt-2 border-t border-gray-700">
-          <button id="cancel-btn"
-            class="px-4 py-2 bg-red-900/50 hover:bg-red-900 text-red-200 rounded-lg text-sm transition-colors border border-red-800">
-            Cancel Processing
-          </button>
+        <!-- TAB: Processing -->
+        <div id="tab-content-processing" class="settings-tab-content hidden space-y-6">
+          <!-- Logic Defaults -->
+          <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <h3 class="text-xl font-bold text-white mb-4">Defaults</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <!-- Opt Quality -->
+              <div>
+                <label class="block text-gray-400 text-sm mb-2">Default Optimization</label>
+                <select id="setting-default-quality"
+                  class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 outline-none">
+                  <option value="high">High Quality (Larger)</option>
+                  <option value="medium" selected>Balanced</option>
+                  <option value="low">Max Compression (Low)</option>
+                </select>
+              </div>
+              <!-- Convert Format -->
+              <div>
+                <label class="block text-gray-400 text-sm mb-2">Default Target Format</label>
+                <select id="setting-default-format"
+                  class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 outline-none">
+                  <option value="mp4" selected>MP4</option>
+                  <option value="mkv">MKV</option>
+                  <option value="gif">GIF</option>
+                  <option value="webm">WebM</option>
+                </select>
+              </div>
+            </div>
+          </div>
         </div>
+
+        <!-- TAB: Logs -->
+        <div id="tab-content-logs" class="settings-tab-content hidden space-y-6">
+          <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <h3 class="text-xl font-bold text-white mb-4">Application Logs</h3>
+            <div class="flex justify-end mb-2 space-x-2">
+              <button id="btn-refresh-logs"
+                class="text-xs text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded">Refresh</button>
+              <button id="btn-clear-logs"
+                class="text-xs px-3 py-1 bg-red-900/50 hover:bg-red-900 rounded text-red-200">Clear Logs</button>
+            </div>
+            <div id="logs-container"
+              class="w-full h-96 bg-gray-900 rounded-lg p-3 overflow-y-auto font-mono text-xs text-gray-300 border border-gray-700 space-y-1 custom-scrollbar">
+              <div class="text-gray-600 italic">No logs recorded yet...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: Appearance -->
+        <div id="tab-content-appearance" class="settings-tab-content hidden space-y-6">
+          <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <h3 class="text-xl font-bold text-white mb-6">Theme</h3>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <!-- Cosmic -->
+              <button
+                class="theme-btn p-4 rounded-xl bg-gray-900 border border-gray-600 hover:border-purple-500 hover:shadow-lg hover:shadow-purple-500/20 text-center transition-all group"
+                data-theme="theme-cosmic">
+                <div
+                  class="w-full h-12 bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg mb-3 border border-gray-700 group-hover:border-purple-500/50 flex items-center justify-center">
+                  <svg class="w-5 h-5 text-purple-500 opacity-50 group-hover:opacity-100" fill="none"
+                    stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                  </svg>
+                </div>
+                <span class="text-sm font-medium text-gray-300 group-hover:text-white">Cosmic</span>
+              </button>
+
+              <!-- Light -->
+              <button
+                class="theme-btn p-4 rounded-xl bg-gray-100 border border-gray-300 hover:border-purple-500 hover:shadow-lg hover:shadow-purple-500/20 text-center transition-all group"
+                data-theme="theme-light">
+                <div
+                  class="w-full h-12 bg-white rounded-lg mb-3 border border-gray-300 group-hover:border-purple-500/50 flex items-center justify-center">
+                  <svg class="w-5 h-5 text-gray-400 group-hover:text-purple-500" fill="none" stroke="currentColor"
+                    viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z">
+                    </path>
+                  </svg>
+                </div>
+                <span class="text-sm font-medium text-gray-800">Light</span>
+              </button>
+
+              <!-- Midnight -->
+              <button
+                class="theme-btn p-4 rounded-xl bg-[#020617] border border-blue-900 hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/20 text-center transition-all group"
+                data-theme="theme-midnight">
+                <div
+                  class="w-full h-12 bg-[#0f172a] rounded-lg mb-3 border border-blue-900 group-hover:border-blue-500/50 flex items-center justify-center">
+                  <svg class="w-5 h-5 text-blue-500 opacity-50 group-hover:opacity-100" fill="none"
+                    stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                  </svg>
+                </div>
+                <span class="text-sm font-medium text-gray-300 group-hover:text-white">Midnight</span>
+              </button>
+
+              <!-- Sunset -->
+              <button
+                class="theme-btn p-4 rounded-xl bg-[#2a0a1a] border border-pink-900 hover:border-pink-500 hover:shadow-lg hover:shadow-pink-500/20 text-center transition-all group"
+                data-theme="theme-sunset">
+                <div
+                  class="w-full h-12 bg-[#4a044e] rounded-lg mb-3 border border-pink-900 group-hover:border-pink-500/50 flex items-center justify-center">
+                  <svg class="w-5 h-5 text-pink-500 opacity-50 group-hover:opacity-100" fill="none"
+                    stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z">
+                    </path>
+                  </svg>
+                </div>
+                <span class="text-sm font-medium text-gray-300 group-hover:text-white">Sunset</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: About -->
+        <div id="tab-content-about" class="settings-tab-content hidden space-y-6">
+          <div class="bg-gray-800 p-8 rounded-xl border border-gray-700 text-center relative overflow-hidden">
+            <!-- Background Decoration -->
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500">
+            </div>
+
+            <div class="relative z-10 flex flex-col items-center">
+              <!-- Icon / Logo Placeholder -->
+              <div
+                class="w-20 h-20 mb-6 bg-gradient-to-br from-purple-600 to-blue-600 rounded-2xl shadow-lg flex items-center justify-center transform hover:rotate-6 transition-transform duration-500 hover:shadow-purple-500/40">
+                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z">
+                  </path>
+                </svg>
+              </div>
+
+              <h3
+                class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 mb-2">
+                Video Optimizer</h3>
+
+              <div class="flex items-center gap-3 mb-6">
+                <span
+                  class="px-3 py-1 bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold rounded-full uppercase tracking-wider">Beta
+                  0.2.1</span>
+              </div>
+
+              <p class="text-gray-400 max-w-md mx-auto mb-8 leading-relaxed">
+                A powerful media processing tool built with <span class="text-white font-semibold">Tauri</span> and
+                <span class="text-white font-semibold">ffMPEG</span>. Designed for speed, privacy, and simplicity.
+              </p>
+
+              <div class="flex gap-4">
+                <button
+                  class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white font-medium transition-colors flex items-center gap-2 border border-gray-600 hover:border-gray-500">
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path
+                      d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                  </svg>
+                  GitHub
+                </button>
+                <button
+                  class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white font-medium transition-colors flex items-center gap-2 border border-gray-600 hover:border-gray-500">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9">
+                    </path>
+                  </svg>
+                  Website
+                </button>
+              </div>
+            </div>
+
+            <div class="mt-8 text-xs text-gray-700 font-mono">
+              Build ID: b0.2.1-tauri-v2
+            </div>
+          </div>
+        </div>
+
       </div>
-    </div>
+    </section>
+
+    <!-- Batch Task Queue Overlay -->
+    <!-- View: Queue -->
+    <section id="view-queue"
+      class="view-section hidden h-full w-full overflow-y-auto p-4 lg:p-8 flex flex-col items-center">
+      <div class="mb-8 space-y-2 text-center">
+        <h1 class="text-3xl font-bold text-white">Process Queue</h1>
+        <p class="text-gray-400">Manage and monitor your tasks</p>
+      </div>
+
+      <div class="w-full max-w-4xl flex justify-between mb-2">
+        <div class="flex space-x-2">
+          <button id="queue-view-active" onclick="window.processManager.setView('active')"
+            class="px-3 py-1 rounded bg-purple-600 text-white text-sm font-medium">Active</button>
+          <button id="queue-view-history" onclick="window.processManager.setView('history')"
+            class="px-3 py-1 rounded bg-gray-700 text-gray-400 hover:text-white text-sm font-medium">History</button>
+        </div>
+        <button id="queue-clear-btn" onclick="window.processManager.clearCompleted()"
+          class="hidden text-sm text-red-400 hover:text-red-300 border border-red-500/30 px-3 py-1 rounded transition-colors hover:bg-red-500/10">
+          Clear Completed
+        </button>
+      </div>
+
+      <div id="queue-list" class="w-full max-w-4xl space-y-4">
+        <!-- Queue Items will be injected here -->
+        <div class="text-center text-gray-500 py-10">No active tasks</div>
+      </div>
+    </section>
 
     <!-- Toast Container -->
     <div id="toast-container" class="fixed top-5 right-5 z-[60] flex flex-col space-y-3 pointer-events-none"></div>
 
   </main>
+  <!-- Log Viewer Modal -->
+  <div id="modal-logs" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-50 backdrop-blur-sm">
+    <div class="bg-gray-900 w-full max-w-4xl h-[80vh] rounded-xl border border-gray-700 flex flex-col shadow-2xl">
+      <div class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-800/50 rounded-t-xl">
+        <h3 class="text-xl font-bold text-white flex items-center gap-2">
+          <span class="text-gray-400 font-mono text-sm" id="modal-logs-id">JOB-ID</span>
+          <span id="modal-logs-title">Job Logs</span>
+        </h3>
+        <button onclick="document.getElementById('modal-logs').classList.add('hidden')"
+          class="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-lg transition-colors">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div id="modal-logs-content"
+        class="flex-1 p-4 overflow-y-auto font-mono text-xs text-gray-300 space-y-1 select-text whitespace-pre-wrap">
+      </div>
+      <div class="p-3 border-t border-gray-800 bg-gray-800/30 flex justify-end gap-2">
+        <button onclick="window.processManager.copyLogs()"
+          class="px-4 py-2 bg-gray-800 border border-gray-600 rounded text-gray-300 hover:text-white hover:bg-gray-700 text-sm">Copy
+          to Clipboard</button>
+        <button onclick="document.getElementById('modal-logs').classList.add('hidden')"
+          class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded text-sm font-medium">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 

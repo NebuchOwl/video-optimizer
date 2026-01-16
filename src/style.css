@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+    scroll-behavior: smooth;
+}
+
 :root {
     --bg-primary: #111827;
     --bg-secondary: #1f2937;
@@ -148,4 +152,23 @@ button[class*='bg-blue-600'],
 button[class*='bg-purple-600'],
 button[class*='to-pink-600'] {
     color: white !important;
+}
+
+/* Queue Components */
+@layer components {
+    .queue-item {
+        @apply p-4 rounded-xl bg-gray-800 border border-gray-700 flex flex-col gap-3 transition-all duration-200 shadow-sm relative overflow-hidden;
+    }
+
+    .queue-item:hover {
+        @apply border-gray-600 shadow-md bg-gray-700/50;
+    }
+
+    .queue-progress-bar {
+        @apply h-1.5 bg-gray-700 rounded-full overflow-hidden;
+    }
+
+    .queue-progress-fill {
+        @apply h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-300;
+    }
 }
