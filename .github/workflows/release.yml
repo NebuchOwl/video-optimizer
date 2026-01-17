@@ -52,6 +52,15 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Video Optimizer ${{ github.ref_name }}'
-          releaseBody: 'Automatic release built by GitHub Actions.'
+          releaseBody: |
+            ## 🚀 Changes in this version
+            - **Settings UI**: Complete overhaul with themes and better navigation.
+            - **Cross-Platform**: Native builds for Windows, macOS, and Linux.
+            - **Improvements**: Bug fixes and performance tweaks.
+
+            ## 📦 Installation
+            *   **Windows**: Download `setup.exe` (or `.msi`).
+            *   **macOS**: Download `.dmg`.
+            *   **Linux**: Download `.deb` (Install with `sudo dpkg -i app.deb`) or `.AppImage`.
           releaseDraft: true
           prerelease: false
