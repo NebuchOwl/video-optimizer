@@ -1,5 +1,7 @@
 # Video Optimizer
 > **Beta 0.2.1**
+[![Release](https://img.shields.io/github/v/release/NebuchOwl/video-optimizer)](https://github.com/NebuchOwl/video-optimizer/releases)
+
 
 A powerful, high-performance video toolkit built with **Tauri v2**, **Rust**, and **FFmpeg**. Optimize, trim, convert, and inspect your media files with a beautiful, modern interface.
 
@@ -54,6 +56,9 @@ A powerful, high-performance video toolkit built with **Tauri v2**, **Rust**, an
     ```bash
     npm run tauri build
     ```
+
+### Cross-Platform Support
+To build for **macOS** or **Linux**, please read our [Contributing Guide](CONTRIBUTING.md).
 
 ## 👤 Author
 

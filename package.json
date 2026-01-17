@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
+    "predev": "node scripts/setup-ffmpeg.mjs",
     "build": "vite build",
+    "prebuild": "node scripts/setup-ffmpeg.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },

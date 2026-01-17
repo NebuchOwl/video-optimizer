@@ -38,6 +38,7 @@
 - [x] **Settings UI Refactor**:
     - [x] **Tabbed Layout**: Split settings into General, Processing, Logs, Appearance, About.
     - [x] **Sidebar Navigation**: Improved visual hierarchy.
+    - [x] **Release Engineering**: CI/CD setup for cross-platform builds.
 - [ ] **Log System Upgrade**:
     - [ ] **LogManager**: New service for file-based logging ($APPCACHE/logs).
     - [ ] **Log Rotation**: Manage log files to prevent storage bloat.

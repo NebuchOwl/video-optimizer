@@ -1,0 +1,45 @@
+Video Optimizer Pro – Custom Non-Commercial License
+
+Copyright (c) 2026 Sina Kop
+
+Permission is hereby granted to any individual to use, copy, modify, and distribute this software
+for personal, educational, and other non-commercial purposes, subject to the following conditions:
+
+1. Non-Commercial Use Only
+This software may NOT be used, in whole or in part, for any commercial purpose without explicit
+prior written permission from the copyright holder.
+
+Commercial use includes, but is not limited to:
+- Selling or licensing the software
+- Including the software in a paid product or service
+- SaaS, subscription-based, or hosted services
+- Use within a commercial organization for business purposes
+- Redistribution as part of a commercial offering
+
+2. Attribution
+The original author and this license must be included in all copies or substantial portions
+of the software.
+
+3. Commercial Licensing
+Commercial use requires a separate commercial license.
+For commercial licensing inquiries, contact the author directly.
+
+4. No Warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE
+AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+5. Third-Party Components and Codecs
+This software utilizes third-party components, including but not limited to FFmpeg and
+hardware-accelerated encoders such as NVIDIA NVENC, AMD AMF, and Intel QSV.
+
+The use of this software does NOT grant any patent, codec, or trademark licenses.
+Certain audio and video codecs (including but not limited to H.264, H.265/HEVC, ProRes, AAC)
+may be subject to patent or licensing restrictions in some jurisdictions.
+
+Users are solely responsible for ensuring compliance with all applicable laws, patents,
+and licensing requirements related to media codecs and hardware acceleration technologies.
+
+END OF TERMS
