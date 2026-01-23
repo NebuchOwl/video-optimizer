@@ -14,8 +14,6 @@ src-tauri/gen/
 src-tauri/binaries/
 
 # Internal Tools & AI Agents
-.agent/
-GEMINI.md
 .vscode/
 
 # Project Management & Internal Docs
