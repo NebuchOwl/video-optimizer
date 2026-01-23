@@ -172,3 +172,89 @@ button[class*='to-pink-600'] {
         @apply h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-300;
     }
 }
+
+/* Light Mode Specific Overrides for UI Elements */
+body.theme-light .trim-control-container {
+    background-color: #ffffff !important;
+    border-color: #e5e7eb !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+body.theme-light .trim-mode-card {
+    border-color: #e5e7eb !important;
+    background-color: #f9fafb !important;
+    color: var(--text-secondary);
+}
+
+/* Ensure text inside cards is visible in light mode */
+body.theme-light .trim-mode-card span.text-white {
+    color: #111827 !important;
+}
+
+body.theme-light .trim-mode-card p.text-gray-400 {
+    color: #4b5563 !important;
+}
+
+/* Scroll Animation Classes */
+.scroll-reveal {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+    will-change: opacity, transform;
+}
+
+.scroll-reveal.active {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.delay-100 {
+    transition-delay: 100ms;
+}
+
+.delay-200 {
+    transition-delay: 200ms;
+}
+
+.delay-300 {
+    transition-delay: 300ms;
+}
+
+/* Progress Bar Striped Animation */
+.queue-progress-fill {
+    background-image: linear-gradient(45deg,
+            rgba(255, 255, 255, 0.15) 25%,
+            transparent 25%,
+            transparent 50%,
+            rgba(255, 255, 255, 0.15) 50%,
+            rgba(255, 255, 255, 0.15) 75%,
+            transparent 75%,
+            transparent);
+    background-size: 1rem 1rem;
+    animation: progress-stripes 1s linear infinite;
+}
+
+@keyframes progress-stripes {
+    from {
+        background-position: 1rem 0;
+    }
+
+    to {
+        background-position: 0 0;
+    }
+}
+
+/* Slow Spin Animation for Logo */
+@keyframes spin-slow {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin-slow {
+    animation: spin-slow 3s linear infinite;
+}

@@ -18,7 +18,8 @@
         "minWidth": 900,
         "minHeight": 700,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "dragDropEnabled": true
       }
     ],
     "security": {
@@ -28,6 +29,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "licenseFile": "../LICENSE.txt",
     "windows": {
       "wix": {
         "language": "en-US"

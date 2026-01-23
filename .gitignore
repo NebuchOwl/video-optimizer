@@ -2,6 +2,7 @@
 node_modules
 dist
 .DS_Store
+coverage/
 
 # Rust
 target/
@@ -11,3 +12,12 @@ target/
 src-tauri/target/
 src-tauri/gen/
 src-tauri/binaries/
+
+# Internal Tools & AI Agents
+.agent/
+.vscode/
+
+# Project Management & Internal Docs
+docs/
+tests/
+vitest.config.js

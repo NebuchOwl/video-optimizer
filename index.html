@@ -16,7 +16,8 @@
   <aside
     class="w-20 lg:w-64 bg-gray-800 flex flex-col border-r border-gray-700 shadow-xl z-20 transition-all duration-300">
     <div class="p-4 lg:p-6 flex items-center justify-center lg:justify-start space-x-3 border-b border-gray-700 h-20">
-      <div class="w-8 h-8 min-w-[2rem] bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg shadow-lg"></div>
+      <div id="app-logo"
+        class="w-8 h-8 min-w-[2rem] bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg shadow-lg"></div>
       <span class="text-xl font-bold tracking-wide hidden lg:block">VideoOps</span>
     </div>
 
@@ -118,7 +119,7 @@
       </div>
 
       <div id="dropzone"
-        class="w-full max-w-2xl border-2 border-dashed border-gray-700 rounded-2xl p-8 lg:p-10 transition-all duration-300 hover:border-purple-500 hover:bg-gray-700 cursor-pointer group relative">
+        class="scroll-reveal w-full max-w-2xl border-2 border-dashed border-gray-700 rounded-2xl p-8 lg:p-10 transition-all duration-300 hover:border-purple-500 hover:bg-gray-700 cursor-pointer group relative">
         <input type="file" id="file-input" class="hidden" accept="video/*" multiple />
 
         <div id="drop-content" class="flex flex-col items-center space-y-4 pointer-events-none">
@@ -344,21 +345,82 @@
           </div>
         </div>
 
-        <button id="optimize-btn"
-          class="w-full mt-8 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-4 px-6 rounded-xl shadow-lg transform transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
-          Optimize Video
-        </button>
+        <div class="flex gap-4 mt-8">
+          <button id="optimize-btn"
+            class="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-4 px-6 rounded-xl shadow-lg transform transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
+            Optimize Video
+          </button>
+
+          <button id="preview-btn"
+            class="hidden flex-none bg-gray-700 hover:bg-gray-600 text-white font-bold py-4 px-6 rounded-xl shadow-lg border border-gray-600 transform transition-all hover:scale-[1.02] active:scale-[0.98]">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z">
+              </path>
+            </svg>
+          </button>
+        </div>
       </div>
     </section>
 
+    <!-- Compare Modal (Hidden) -->
+    <div id="compare-modal"
+      class="hidden fixed inset-0 z-[60] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-8">
+      <div
+        class="w-full max-w-5xl h-[70vh] relative bg-black rounded-2xl overflow-hidden shadow-2xl border border-gray-800 group">
+
+        <!-- Video Containers -->
+        <div class="absolute inset-0 w-full h-full">
+          <!-- Optimized (Bottom Layer) -->
+          <video id="preview-optimized" class="absolute inset-0 w-full h-full object-contain" loop muted></video>
+          <div
+            class="absolute bottom-4 right-4 bg-black/60 px-3 py-1 rounded-lg text-xs font-bold text-green-400 pointer-events-none">
+            Optimized</div>
+        </div>
+
+        <div id="compare-overlay"
+          class="absolute inset-0 w-1/2 h-full overflow-hidden border-r-2 border-white/50 bg-black">
+          <!-- Original (Top Layer - Clipped) -->
+          <video id="preview-original" class="absolute top-0 left-0 h-full max-w-none object-contain"
+            style="width: 100vw; max-width: 80rem;" loop muted></video>
+          <div
+            class="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded-lg text-xs font-bold text-blue-400 pointer-events-none">
+            Original</div>
+        </div>
+
+        <!-- Slider Handle -->
+        <div id="compare-slider"
+          class="absolute top-0 bottom-0 left-1/2 w-1 cursor-ew-resize z-10 -ml-0.5 hover:bg-purple-500/50 transition-colors">
+          <div
+            class="absolute top-1/2 left-1/2 -ml-4 -mt-4 w-8 h-8 bg-white rounded-full shadow-lg flex items-center justify-center pointer-events-none">
+            <svg class="w-4 h-4 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+            </svg>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Controls -->
+      <div class="mt-6 flex gap-4">
+        <button id="compare-close-btn"
+          class="px-6 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white font-medium transition-colors">Close
+          Preview</button>
+        <div class="text-sm text-gray-400 py-2">Move slider to compare quality</div>
+      </div>
+    </div>
+
     <!-- View: Trimmer -->
-    <section id="view-trimmer" class="view-section hidden h-full w-full p-4 lg:p-8 overflow-hidden">
+    <section id="view-trimmer" class="scroll-reveal view-section hidden h-full w-full p-4 lg:p-8 overflow-hidden">
       <div class="max-w-6xl w-full mx-auto flex flex-col items-center h-full">
         <h2 class="text-2xl lg:text-3xl font-bold mb-4 lg:mb-6 text-center flex-none">Video Trimmer</h2>
 
         <!-- Trimmer Upload/Preview Area -->
         <div id="trim-dropzone"
-          class="w-full flex-1 min-h-0 bg-black border-2 border-dashed border-gray-700 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-gray-700 transition-all relative overflow-hidden shadow-2xl">
+          class="scroll-reveal w-full flex-1 min-h-0 bg-black border-2 border-dashed border-gray-700 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-gray-700 transition-all relative overflow-hidden shadow-2xl">
 
           <div id="trim-upload-content"
             class="text-center p-8 absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none">
@@ -467,6 +529,78 @@
           </div>
 
           <div class="border-t border-gray-700 pt-6">
+            <!-- Compression Mode Selector -->
+            <div class="trim-control-container mb-6 bg-gray-900/50 p-4 rounded-xl border border-gray-700">
+              <label class="block text-xs uppercase font-bold text-gray-400 mb-3">Output Mode</label>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <!-- Mode: Copy -->
+                <label class="relative cursor-pointer group">
+                  <input type="radio" name="trim-mode" value="copy" class="peer sr-only" checked>
+                  <div
+                    class="trim-mode-card h-full p-3 bg-gray-800 border-2 border-transparent rounded-lg peer-checked:border-purple-500 peer-checked:bg-purple-500/10 transition-all">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="font-bold text-white text-sm">Fast Trim</span>
+                      <svg class="w-4 h-4 text-gray-500 peer-checked:text-purple-400" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M13 10V3L4 14h7v7l9-11h-7z">
+                        </path>
+                      </svg>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-tight">No re-encoding. Instant cut. Original quality.
+                    </p>
+                  </div>
+                </label>
+
+                <!-- Mode: Balanced -->
+                <label class="relative cursor-pointer group">
+                  <input type="radio" name="trim-mode" value="balanced" class="peer sr-only">
+                  <div
+                    class="h-full p-3 bg-gray-800 border-2 border-transparent rounded-lg peer-checked:border-purple-500 peer-checked:bg-purple-500/10 transition-all">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="font-bold text-white text-sm">Optimize</span>
+                      <svg class="w-4 h-4 text-gray-500 peer-checked:text-purple-400" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                      </svg>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-tight">Re-encode with balanced settings. Good for
+                      sharing.</p>
+                  </div>
+                </label>
+
+                <!-- Mode: Max -->
+                <label class="relative cursor-pointer group">
+                  <input type="radio" name="trim-mode" value="max" class="peer sr-only">
+                  <div
+                    class="h-full p-3 bg-gray-800 border-2 border-transparent rounded-lg peer-checked:border-purple-500 peer-checked:bg-purple-500/10 transition-all">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="font-bold text-white text-sm">Max Compress</span>
+                      <svg class="w-4 h-4 text-gray-500 peer-checked:text-purple-400" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+                      </svg>
+                    </div>
+                    <p class="text-[10px] text-gray-400 leading-tight">Smallest size. Takes longer.</p>
+                  </div>
+                </label>
+              </div>
+
+              <!-- Processing Unit Selector (Hidden unless re-encoding) -->
+              <div id="trim-backend-selector" class="mt-4 pt-3 border-t border-gray-700 hidden">
+                <label class="block text-[10px] uppercase font-bold text-gray-500 mb-2">Processing Unit</label>
+                <select id="trim-backend"
+                  class="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:ring-1 focus:ring-purple-500 outline-none">
+                  <option value="cpu" selected>CPU (Software)</option>
+                  <option value="nvidia">NVIDIA GPU (NVENC)</option>
+                  <option value="amd">AMD GPU (AMF)</option>
+                  <option value="intel">Intel GPU (QSV)</option>
+                </select>
+              </div>
+            </div>
+
             <button id="trim-action-btn"
               class="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-4 rounded-xl shadow-lg transition-all hover:scale-[1.01] active:scale-[0.99]">
               Trim Video Now
@@ -967,7 +1101,7 @@
           <button id="queue-view-history" onclick="window.processManager.setView('history')"
             class="px-3 py-1 rounded bg-gray-700 text-gray-400 hover:text-white text-sm font-medium">History</button>
         </div>
-        <button id="queue-clear-btn" onclick="window.processManager.clearCompleted()"
+        <button id="queue-clear-btn"
           class="hidden text-sm text-red-400 hover:text-red-300 border border-red-500/30 px-3 py-1 rounded transition-colors hover:bg-red-500/10">
           Clear Completed
         </button>

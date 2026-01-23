@@ -1,9 +1,11 @@
 import './style.css';
+
 import { Command } from '@tauri-apps/plugin-shell';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readFile } from '@tauri-apps/plugin-fs';
 import { tempDir, appCacheDir, join } from '@tauri-apps/api/path';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 
 
 const SUPPORTED_EXTENSIONS = [
@@ -30,20 +32,27 @@ window.showToast = function (message, type = 'info') {
   if (!toastContainer) return;
 
   const toast = document.createElement('div');
-  const colors = {
-    success: 'bg-gray-800 border-l-4 border-green-500 text-green-100',
-    error: 'bg-gray-800 border-l-4 border-red-500 text-red-100',
-    info: 'bg-gray-800 border-l-4 border-blue-500 text-blue-100'
+
+  // Theme-aware, responsive, transparent styling
+  // bg-theme-secondary/90 ensures it adapts to light/dark themes while being transparent
+  // md:min-w-[300px] ensures it's not too small on desktop, but w-full on mobile
+  // border-l-4 provides the color indicator
+  const baseClasses = 'bg-gray-800/95 backdrop-blur-md shadow-xl p-4 rounded-r-lg border-l-4 flex items-center transform transition-all duration-300 opacity-0 translate-x-10 pointer-events-auto z-50 mb-3 w-[90vw] max-w-sm md:w-auto md:min-w-[300px]';
+
+  const typeClasses = {
+    success: 'border-green-500 text-white',
+    error: 'border-red-500 text-white',
+    info: 'border-blue-500 text-white'
   };
 
-  toast.className = `${colors[type] || colors.info} p-4 rounded shadow-lg flex items-center transform transition-all duration-300 opacity-0 translate-x-10 pointer-events-auto min-w-[300px] z-50 mb-3`;
+  toast.className = `${baseClasses} ${typeClasses[type] || typeClasses.info}`;
 
   const msgDiv = document.createElement('div');
-  msgDiv.className = 'flex-1 font-medium whitespace-pre-wrap'; // Preserve newlines
+  msgDiv.className = 'flex-1 font-medium whitespace-pre-wrap text-sm'; // Variable font size
   msgDiv.textContent = message;
 
   const closeBtn = document.createElement('button');
-  closeBtn.className = 'ml-4 text-gray-400 hover:text-white font-bold';
+  closeBtn.className = 'ml-4 text-gray-400 hover:text-white font-bold opacity-70 hover:opacity-100 transition-opacity';
   closeBtn.textContent = '✕';
   closeBtn.onclick = () => toast.remove();
 
@@ -64,8 +73,130 @@ window.showToast = function (message, type = 'info') {
   }, 4000);
 }
 
+// Logo Animation Helper
+function toggleLogoAnimation(active) {
+  const logo = document.getElementById('app-logo');
+  if (logo) {
+    if (active) logo.classList.add('animate-spin-slow');
+    else logo.classList.remove('animate-spin-slow');
+  }
+}
+
 // Override default alert
 window.alert = (msg) => window.showToast(msg, 'info');
+
+// --- Tauri Native File Drop Registry ---
+const tauriDropListeners = new Map();
+let tauriDropListenerInitialized = false;
+let currentHoveredDropzone = null;
+
+async function initTauriFileDrop() {
+  if (tauriDropListenerInitialized) return;
+  tauriDropListenerInitialized = true;
+
+  try {
+    // Tauri v2 correct API: getCurrentWebview().onDragDropEvent()
+    const webview = getCurrentWebview();
+
+    await webview.onDragDropEvent((event) => {
+      const type = event.payload.type;
+
+      if (type === 'over') {
+        // User is hovering with files
+        const position = event.payload.position;
+
+        // Find which dropzone is under the cursor
+        const hoveredElement = document.elementFromPoint(position.x, position.y);
+
+        // Update visual feedback for all registered dropzones
+        for (const [element, _] of tauriDropListeners) {
+          if (element.contains(hoveredElement) || element === hoveredElement) {
+            element.classList.add('border-purple-500', 'bg-gray-800/50');
+            currentHoveredDropzone = element;
+          } else {
+            element.classList.remove('border-purple-500', 'bg-gray-800/50');
+          }
+        }
+      }
+      else if (type === 'drop') {
+        // User dropped files
+        const paths = event.payload.paths;
+        if (!paths || paths.length === 0) return;
+
+        console.log('[Tauri] Files dropped:', paths);
+
+        // Use the currently hovered dropzone, or find closest one
+        if (currentHoveredDropzone && tauriDropListeners.has(currentHoveredDropzone)) {
+          currentHoveredDropzone.classList.remove('border-purple-500', 'bg-gray-800/50');
+          tauriDropListeners.get(currentHoveredDropzone)(paths);
+        } else {
+          // Fallback: use first registered listener
+          const firstEntry = tauriDropListeners.entries().next().value;
+          if (firstEntry) {
+            firstEntry[0].classList.remove('border-purple-500', 'bg-gray-800/50');
+            firstEntry[1](paths);
+          }
+        }
+
+        currentHoveredDropzone = null;
+      }
+      else if (type === 'cancel' || type === 'leave') {
+        // User cancelled or left the window
+        for (const [element] of tauriDropListeners) {
+          element.classList.remove('border-purple-500', 'bg-gray-800/50');
+        }
+        currentHoveredDropzone = null;
+      }
+    });
+
+    console.log('[Tauri] Native file drop initialized with onDragDropEvent');
+  } catch (e) {
+    console.warn('[Tauri] Native file drop not available:', e);
+  }
+}
+
+// --- Unified Drag & Drop Handler ---
+function setupUnifiedDragDrop(element, onFilesDropped) {
+  if (!element) return;
+
+  // Register for Tauri native events (Windows/macOS/Linux)
+  tauriDropListeners.set(element, onFilesDropped);
+  initTauriFileDrop();
+
+  // HTML5 Drag & Drop (fallback for web preview and visual feedback)
+  element.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    element.classList.add('border-purple-500', 'bg-gray-800/50');
+  });
+
+  element.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    element.classList.remove('border-purple-500', 'bg-gray-800/50');
+  });
+
+  element.addEventListener('drop', (e) => {
+    e.preventDefault();
+    element.classList.remove('border-purple-500', 'bg-gray-800/50');
+
+    // Try HTML5 File API with path extraction (works in some Tauri configs)
+    if (e.dataTransfer.files.length > 0) {
+      const paths = [];
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        const f = e.dataTransfer.files[i];
+        // Tauri v2 may expose path on File object in some scenarios
+        if (f.path) paths.push(f.path);
+        else if (f.webkitRelativePath) paths.push(f.webkitRelativePath);
+        else if (f.name) paths.push(f.name); // Fallback (may not have full path)
+      }
+
+      if (paths.length > 0 && paths[0].includes('/') || paths[0].includes('\\')) {
+        // We have valid paths, use them
+        onFilesDropped(paths);
+      }
+      // Otherwise, Tauri native event will handle it
+    }
+  });
+}
 
 // --- Global Drag Prevention ---
 window.addEventListener('dragover', (e) => {
@@ -90,45 +221,12 @@ let currentChildProcess = null; // Still useful for tracking if we want to kill 
 // But processManager handles it now. I'll leave it as null.
 
 // Drag and Drop Logic
-dropzone.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  dropzone.classList.add('border-purple-500', 'bg-gray-800/50');
-});
-
-dropzone.addEventListener('dragleave', (e) => {
-  e.preventDefault();
-  dropzone.classList.remove('border-purple-500', 'bg-gray-800/50');
-});
-
+// Drag and Drop Logic (Unified)
 const manualUploadBtn = document.getElementById('manual-upload-btn');
 
-dropzone.addEventListener('drop', (e) => {
-  e.preventDefault();
-  dropzone.classList.remove('border-purple-500', 'bg-gray-800/50');
-
-  if (e.dataTransfer.files.length) {
-    const paths = [];
-    // Tauri specific: e.dataTransfer.files contains objects with 'path' property if configured?
-    // Actually in web drag drop we might not get full path unless Tauri intercepts.
-    // Assuming standard behavior where we extract names/paths if available.
-    for (let i = 0; i < e.dataTransfer.files.length; i++) {
-      const f = e.dataTransfer.files[i];
-      // In Tauri v2 drag drop, we usually get paths.
-      /* 
-         Note: If drop gives files with only name, we rely on user to pick via dialog. 
-         But let's try to capture 'path' property if exposed (Electron/Tauri often do).
-      */
-      if (f.path) paths.push(f.path);
-      else if (f.name) console.warn("File object missing path:", f.name);
-    }
-
-    if (paths.length > 0) {
-      selectedFiles = paths;
-      handleFileSelect(selectedFiles);
-    } else {
-      alert("Drag & Drop received files but could not access paths. Please use the Select button.");
-    }
-  }
+setupUnifiedDragDrop(dropzone, (paths) => {
+  selectedFiles = paths;
+  handleFileSelect(selectedFiles);
 });
 
 // Bind click to the button explicitly, prevent bubbling if needed or just let it work
@@ -482,6 +580,13 @@ const processManager = {
     Logger.log({ type: 'info', message: `Job Retried: ${job.name}` });
   },
 
+  clearHistory() {
+    this.history = [];
+    this.save();
+    this.updateUI();
+    showToast('History cleared', 'info');
+  },
+
   clearCompleted() {
     const activeStatues = ['pending', 'processing'];
     const completed = this.queue.filter(j => !activeStatues.includes(j.status));
@@ -534,9 +639,14 @@ const processManager = {
   async processNext() {
     if (this.isProcessing) return;
     const job = this.queue.find(j => j.status === 'pending');
-    if (!job) return;
+
+    if (!job) {
+      toggleLogoAnimation(false); // No more jobs, stop animation
+      return;
+    }
 
     this.isProcessing = true;
+    toggleLogoAnimation(true); // Start animation
     job.status = 'processing';
     job.info = 'Starting...';
     this.save();
@@ -560,6 +670,7 @@ const processManager = {
           Logger.log({ type: 'error', message: `Job Failed: ${job.name}`, details: `Exit Code: ${data.code}` });
         }
         this.isProcessing = false;
+        job.progress = 100;
         this.save();
         this.updateUI();
         this.processNext();
@@ -610,6 +721,7 @@ const processManager = {
       this.isProcessing = false;
       this.save();
       this.updateUI();
+      toggleLogoAnimation(false); // STOP ON EXCEPTION (if queue blocked)
       this.processNext();
       Logger.log({ type: 'error', message: `Process Exception: ${job.name}`, details: e.toString() });
     }
@@ -621,8 +733,16 @@ const processManager = {
     if (!container) return;
 
     if (this.viewMode === 'history') {
-      // History View
-      if (clearBtn) clearBtn.classList.add('hidden'); // Hide clear btn in history for now or change interaction
+      // History View - Show clear button for history
+      if (clearBtn) {
+        if (this.history.length > 0) {
+          clearBtn.classList.remove('hidden');
+          clearBtn.textContent = 'Clear History';
+          clearBtn.onclick = () => this.clearHistory();
+        } else {
+          clearBtn.classList.add('hidden');
+        }
+      }
 
       if (this.history.length === 0) {
         container.innerHTML = '<div class="text-center text-gray-500 py-10">No history available</div>';
@@ -650,8 +770,13 @@ const processManager = {
     // Active View
     const hasCompleted = this.queue.some(j => ['done', 'failed', 'cancelled'].includes(j.status));
     if (clearBtn) {
-      if (hasCompleted) clearBtn.classList.remove('hidden');
-      else clearBtn.classList.add('hidden');
+      if (hasCompleted) {
+        clearBtn.classList.remove('hidden');
+        clearBtn.textContent = 'Clear Completed';
+        clearBtn.onclick = () => this.clearCompleted();
+      } else {
+        clearBtn.classList.add('hidden');
+      }
     }
 
     if (this.queue.length === 0) {
@@ -879,7 +1004,7 @@ function getOptimizerArgs() {
         if (advPreset.value.includes('slow')) pVal = 'p6';
         args.push('-preset', pVal);
       } else if (codec.includes('amf')) {
-        args.push('-rc', 'vbr');
+        args.push('-rc', 'cqp');
         args.push('-qp-i', advCrf.value);
         args.push('-qp-p', advCrf.value);
         let qVal = 'balanced';
@@ -943,7 +1068,7 @@ function getOptimizerArgs() {
     const encoderMode = document.getElementById('encoder-select').value;
     switch (encoderMode) {
       case 'gpu-nvidia': args.push('-c:v', 'h264_nvenc', '-cq', crf, '-preset', 'p4'); break;
-      case 'gpu-amd': args.push('-c:v', 'h264_amf', '-qp-i', crf, '-qp-p', crf); break;
+      case 'gpu-amd': args.push('-c:v', 'h264_amf', '-rc', 'cqp', '-qp-i', crf, '-qp-p', crf); break;
       case 'gpu-intel': args.push('-c:v', 'h264_qsv', '-global_quality', crf); break;
       case 'cpu-low': args.push('-vcodec', 'libx264', '-crf', crf, '-preset', 'medium', '-threads', '2'); break;
       default: args.push('-vcodec', 'libx264', '-crf', crf, '-preset', 'fast'); break;
@@ -1127,12 +1252,28 @@ trimVideoPreview.addEventListener('loadedmetadata', () => {
 
 
 
-async function loadTrimVideo() {
+// Trimmer Drag & Drop (Unified)
+setupUnifiedDragDrop(trimDropzone, (paths) => {
+  if (paths.length > 0) {
+    loadTrimVideo(paths[0]); // Load first file
+  }
+});
+
+trimDropzone.addEventListener('click', () => {
+  if (!trimFilePath) loadTrimVideo();
+});
+
+async function loadTrimVideo(optionalPath = null) {
   try {
-    const file = await open({
-      multiple: false,
-      filters: [{ name: 'Video', extensions: SUPPORTED_EXTENSIONS }]
-    });
+    let file = optionalPath;
+
+    if (!file) {
+      file = await open({
+        multiple: false,
+        filters: [{ name: 'Video', extensions: SUPPORTED_EXTENSIONS }]
+      });
+    }
+
     if (file) {
       trimFilePath = file;
 
@@ -1150,7 +1291,7 @@ async function loadTrimVideo() {
 
       // Reset State
       trimState.start = 0;
-      trimState.end = 10;
+      trimState.end = 10; // Will update on metadata load
       updateTimelineUI();
 
       openExternalBtn.classList.remove('hidden');
@@ -1185,14 +1326,38 @@ trimChangeFile.addEventListener('click', (e) => {
   loadTrimVideo();
 });
 
+// --- Trim Logic ---
+const trimModeRadios = document.querySelectorAll('input[name="trim-mode"]');
+const trimBackendSelector = document.getElementById('trim-backend-selector');
+const trimBackend = document.getElementById('trim-backend');
+
+// UI Toggle Logic
+trimModeRadios.forEach(radio => {
+  radio.addEventListener('change', (e) => {
+    if (e.target.value !== 'copy') {
+      trimBackendSelector.classList.remove('hidden');
+    } else {
+      trimBackendSelector.classList.add('hidden');
+    }
+  });
+});
+
 trimActionBtn.addEventListener('click', async () => {
   if (!trimFilePath) return;
 
   const lastDot = trimFilePath.lastIndexOf('.');
   const ext = trimFilePath.substring(lastDot);
   const name = trimFilePath.split(/[\\/]/).pop();
-  const defaultName = name.substring(0, name.lastIndexOf('.')) + '_trimmed' + ext;
-  const defaultPath = appSettings.outputDir ? await join(appSettings.outputDir, defaultName) : trimFilePath.substring(0, lastDot) + '_trimmed' + ext;
+
+  // Decide Mode
+  // If no radio is checked (shouldn't happen due to default), fallback to copy
+  const selectedRadio = document.querySelector('input[name="trim-mode"]:checked');
+  const selectedMode = selectedRadio ? selectedRadio.value : 'copy';
+
+  const suffix = selectedMode === 'copy' ? '_trimmed' : `_${selectedMode}`;
+
+  const defaultName = name.substring(0, name.lastIndexOf('.')) + suffix + ext;
+  const defaultPath = appSettings.outputDir ? await join(appSettings.outputDir, defaultName) : trimFilePath.substring(0, lastDot) + suffix + ext;
 
   const output = await save({ defaultPath, filters: [{ name: 'Video', extensions: [ext.substring(1)] }] });
   if (!output) return;
@@ -1200,21 +1365,85 @@ trimActionBtn.addEventListener('click', async () => {
   const startStr = formatTime(trimState.start, true);
   const durationStr = formatTime(trimState.end - trimState.start, true);
 
-  // Submit to Queue
-  const args = [
-    '-ss', startStr, '-i', trimFilePath, '-t', durationStr,
-    '-c', 'copy', '-map', '0', '-avoid_negative_ts', 'make_zero', '-y', output
-  ];
+  // --- Logic Branching --- //
+  if (selectedMode !== 'copy') {
+    // 1. Trim to Temp
+    const tempD = await tempDir();
+    const tempTrimPath = await join(tempD, `temp_trim_${Date.now()}${ext}`);
 
-  processManager.addJob({
-    name: `Trim: ${trimFilePath.split(/[\\/]/).pop()}`,
-    type: 'Trim',
-    command: 'ffmpeg',
-    args: args,
-    output: output
-  });
+    // Trim Command (Fast Copy)
+    const trimArgs = [
+      '-ss', startStr, '-i', trimFilePath, '-t', durationStr,
+      '-c', 'copy', '-map', '0', '-avoid_negative_ts', 'make_zero', '-y', tempTrimPath
+    ];
 
-  showToast(`Trim task added to Queue`, 'success');
+    // 2. Add Trim Job
+    const trimJobId = processManager.addJob({
+      name: `Pre-Trim: ${name}`,
+      type: 'Trim (Temp)',
+      command: 'ffmpeg',
+      args: trimArgs,
+      output: tempTrimPath
+    });
+
+    // 3. Chain Optimize Job
+    const backend = trimBackend ? trimBackend.value : 'cpu';
+    const optArgs = ['-i', tempTrimPath];
+
+    // Codec & Quality Logic
+    let crf = '23'; // Default Balanced
+    if (selectedMode === 'max') crf = '28'; // More compression
+
+    // Backend Flags
+    switch (backend) {
+      case 'nvidia':
+        optArgs.push('-c:v', 'h264_nvenc', '-cq', crf, '-preset', 'p4');
+        break;
+      case 'amd':
+        optArgs.push('-c:v', 'h264_amf', '-rc', 'cqp', '-qp-i', crf, '-qp-p', crf, '-quality', 'balanced');
+        break;
+      case 'intel':
+        optArgs.push('-c:v', 'h264_qsv', '-global_quality', crf, '-preset', 'medium');
+        break;
+      case 'cpu':
+      default:
+        optArgs.push('-c:v', 'libx264', '-crf', crf, '-preset', selectedMode === 'max' ? 'slow' : 'medium');
+        break;
+    }
+
+    // Audio (Copy to preserve quality unless we add audio options later)
+    optArgs.push('-c:a', 'copy');
+
+    // Final Output
+    optArgs.push('-y', output);
+
+    processManager.addJob({
+      name: `Compress (${selectedMode}): ${name}`,
+      type: 'Optimize',
+      command: 'ffmpeg',
+      args: optArgs,
+      output: output
+    });
+
+    showToast(`Queued: Trim + Opt (${selectedMode})`, 'success');
+
+  } else {
+    // Standard Trim
+    const args = [
+      '-ss', startStr, '-i', trimFilePath, '-t', durationStr,
+      '-c', 'copy', '-map', '0', '-avoid_negative_ts', 'make_zero', '-y', output
+    ];
+
+    processManager.addJob({
+      name: `Trim: ${trimFilePath.split(/[\\/]/).pop()}`,
+      type: 'Trim',
+      command: 'ffmpeg',
+      args: args,
+      output: output
+    });
+
+    showToast(`Trim task added to Queue`, 'success');
+  }
 });
 
 // --- Converter Logic ---
@@ -1286,9 +1515,170 @@ function setupConverterFile(files) {
   }
 }
 
+// Converter Drag & Drop (Unified)
+setupUnifiedDragDrop(converterDropzone, (paths) => {
+  converterFiles = paths;
+  setupConverterFile(converterFiles);
+});
+
 converterDropzone.addEventListener('click', (e) => {
   if (converterFiles.length === 0) loadConverterFile();
 });
+
+// --- Preview Logic ---
+const previewBtn = document.getElementById('preview-btn'); // Needs to be added to HTML
+if (previewBtn) {
+  previewBtn.addEventListener('click', async () => {
+    if (!selectedFiles || selectedFiles.length === 0) {
+      showToast('Please select a video first', 'info');
+      return;
+    }
+    const filePath = selectedFiles[0]; // Use selectedFiles array
+
+    toggleLogoAnimation(true);
+    showToast('Generating Preview...', 'info');
+
+    try {
+      // Generate paths for BOTH original (transcoded to safe MP4) and optimized
+      const clips = await generatePreviewClips(filePath);
+      if (clips) {
+        showToast('Preview Ready!', 'success');
+        openPreviewModal(clips.orig, clips.opt);
+      }
+    } catch (err) {
+      showToast('Preview Failed', 'error');
+      console.error(err);
+    } finally {
+      toggleLogoAnimation(false);
+    }
+  });
+}
+
+// Generate 5s Preview Clip
+// Generate 5s Preview Clips (Original & Optimized)
+async function generatePreviewClips(inputPath) {
+  const tempD = await tempDir();
+  const timestamp = Date.now();
+  const pathOrig = await join(tempD, `preview_orig_${timestamp}.mp4`);
+  const pathOpt = await join(tempD, `preview_opt_${timestamp}.mp4`);
+
+  // 1. Generate "Original" Preview (Transcode to standardized MP4 for browser)
+  const cmdOrig = Command.sidecar('ffmpeg', [
+    '-ss', '0', '-t', '5', '-i', inputPath,
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+    '-c:a', 'aac',
+    '-y', pathOrig
+  ]);
+
+  // 2. Generate "Optimized" Preview (Force .mp4 container)
+  const baseArgs = getOptimizerArgs();
+  const cmdOpt = Command.sidecar('ffmpeg', [
+    '-ss', '0', '-t', '5', '-i', inputPath,
+    ...baseArgs,
+    '-y', pathOpt
+  ]);
+
+  // Run both in parallel
+  await Promise.all([
+    new Promise((resolve, reject) => {
+      cmdOrig.on('close', (d) => d.code === 0 ? resolve() : reject(`Orig preview failed: ${d.code}`));
+      cmdOrig.on('error', reject);
+      cmdOrig.spawn();
+    }),
+    new Promise((resolve, reject) => {
+      cmdOpt.on('close', (d) => d.code === 0 ? resolve() : reject(`Opt preview failed: ${d.code}`));
+      cmdOpt.on('error', reject);
+      cmdOpt.spawn();
+    })
+  ]);
+
+  return { orig: pathOrig, opt: pathOpt };
+}
+
+// --- Modal & Sync Logic ---
+function openPreviewModal(originalPath, optimizedPath) {
+  const modal = document.getElementById('compare-modal');
+  const vidOrig = document.getElementById('preview-original');
+  const vidOpt = document.getElementById('preview-optimized');
+  const slider = document.getElementById('compare-slider');
+  const overlay = document.getElementById('compare-overlay');
+  const closeBtn = document.getElementById('compare-close-btn');
+
+  // Load sources with proper Tauri asset URL
+  console.log('Original Path:', originalPath);
+  console.log('Optimized Path:', optimizedPath);
+
+  const srcOrig = convertFileSrc(originalPath);
+  const srcOpt = convertFileSrc(optimizedPath);
+
+  console.log('Converted Orig:', srcOrig);
+  console.log('Converted Opt:', srcOpt);
+
+  vidOrig.src = srcOrig;
+  vidOpt.src = srcOpt;
+
+  // Debug Error Listeners
+  vidOrig.onerror = (e) => console.error('Video Original Error:', vidOrig.error, e);
+  vidOpt.onerror = (e) => console.error('Video Optimized Error:', vidOpt.error, e);
+
+  // Reset UI
+  overlay.style.width = '50%';
+  slider.style.left = '50%';
+  modal.classList.remove('hidden');
+
+  // Sync Logic
+  let isSyncing = false;
+  const sync = (source, target) => {
+    if (isSyncing) return;
+    isSyncing = true;
+    if (Math.abs(source.currentTime - target.currentTime) > 0.1) {
+      target.currentTime = source.currentTime;
+    }
+    if (source.paused !== target.paused) {
+      source.paused ? target.pause() : target.play();
+    }
+    isSyncing = false;
+  };
+
+  const master = vidOpt; // Optimized as master (usually shorter load)
+  const slave = vidOrig;
+
+  master.onplay = () => slave.play();
+  master.onpause = () => slave.pause();
+  master.onseeking = () => slave.currentTime = master.currentTime;
+  master.onseeked = () => slave.currentTime = master.currentTime;
+  master.ontimeupdate = () => {
+    if (Math.abs(master.currentTime - slave.currentTime) > 0.2) {
+      slave.currentTime = master.currentTime;
+    }
+  };
+
+  // Drag Logic
+  let isDragging = false;
+  const container = slider.parentElement;
+
+  const onMove = (e) => {
+    if (!isDragging) return;
+    const rect = container.getBoundingClientRect();
+    const x = (e.clientX || e.touches[0].clientX) - rect.left;
+    const percent = Math.max(0, Math.min(100, (x / rect.width) * 100));
+
+    slider.style.left = `${percent}%`;
+    overlay.style.width = `${percent}%`;
+  };
+
+  slider.addEventListener('mousedown', () => isDragging = true);
+  window.addEventListener('mouseup', () => isDragging = false);
+  window.addEventListener('mousemove', onMove);
+
+  // Close Logic
+  closeBtn.onclick = () => {
+    modal.classList.add('hidden');
+    vidOrig.pause(); vidOrig.src = '';
+    vidOpt.pause(); vidOpt.src = '';
+    // Optional: Delete temp file here or keep for cache
+  };
+}
 
 converterSelectBtn.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -1355,6 +1745,12 @@ const mergerListEl = document.getElementById('merger-list');
 let mergerFiles = [];
 
 if (mergerAddBtn) {
+  // Merger Drag & Drop (Unified)
+  setupUnifiedDragDrop(mergerListEl, (paths) => {
+    mergerFiles = [...mergerFiles, ...paths];
+    renderMergerList();
+  });
+
   mergerAddBtn.addEventListener('click', async () => {
     const selection = await open({
       multiple: true,
@@ -1463,6 +1859,14 @@ const btnNormalize = document.getElementById('btn-normalize-audio');
 let audioFile = null;
 
 if (audioDropzone) {
+  // Audio Drag & Drop (Unified)
+  setupUnifiedDragDrop(audioDropzone, (paths) => {
+    if (paths.length > 0) {
+      audioFile = paths[0];
+      updateAudioUI();
+    }
+  });
+
   audioDropzone.addEventListener('click', async () => {
     const file = await open({ filters: [{ name: 'Video', extensions: SUPPORTED_EXTENSIONS }] });
     if (file) {
@@ -1542,11 +1946,15 @@ async function runAudioCommand(args) {
 /* --- Inspector Logic --- */
 const inspectorDropzone = document.getElementById('inspector-dropzone');
 if (inspectorDropzone) {
+  // Inspector Drag & Drop (Unified)
+  setupUnifiedDragDrop(inspectorDropzone, (paths) => {
+    if (paths.length > 0) inspectFile(paths[0]);
+  });
+
   inspectorDropzone.addEventListener('click', async () => {
     const file = await open({ filters: [{ name: 'Video', extensions: SUPPORTED_EXTENSIONS }] });
     if (file) inspectFile(file);
   });
-  // Add drag drop later if needed
 }
 
 async function inspectFile(path) {
@@ -1977,6 +2385,30 @@ const presetManager = {
   }
 };
 
+
+// Scroll Reveal Observer
+const observerOptions = {
+  root: null,
+  rootMargin: '0px',
+  threshold: 0.1
+};
+
+const scrollObserver = new IntersectionObserver((entries, observer) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('active');
+      observer.unobserve(entry.target); // Only animate once
+    }
+  });
+}, observerOptions);
+
+function initScrollAnimations() {
+  document.querySelectorAll('.scroll-reveal').forEach(el => {
+    scrollObserver.observe(el);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   presetManager.init();
+  initScrollAnimations();
 });
